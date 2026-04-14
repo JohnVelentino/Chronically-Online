@@ -68,10 +68,31 @@ function getHeroPortraitFromStorage(hero) {
 
 function getUltimateMeta(hero) {
   const heroId = typeof hero === "string" ? hero : hero?.id;
-  if (heroId === "trump") return { id: "trump", name: "The Japan Special" };
-  if (heroId === "cia") return { id: "cia", name: "Deep State Download" };
-  if (heroId === "elon") return { id: "elon", name: "Future Tech" };
-  return { id: "generic", name: "Ultimate" };
+  if (heroId === "trump") return {
+    id: "trump",
+    name: "The Japan Special",
+    cost: 10,
+    emoji: "🇯🇵",
+    themeColor: "#cc2222",
+    desc: "Deal 8 damage to all enemies and summon 2× The Wall.",
+  };
+  if (heroId === "cia") return {
+    id: "cia",
+    name: "Deep State Download",
+    cost: 10,
+    emoji: "🛰️",
+    themeColor: "#6dc6d6",
+    desc: "Take control of up to 2 enemy minions and steal 1 card from their hand.",
+  };
+  if (heroId === "elon") return {
+    id: "elon",
+    name: "Future Tech",
+    cost: 10,
+    emoji: "🚀",
+    themeColor: "#00e6c8",
+    desc: "Summon Mars Colony and give all friendlies Charge.",
+  };
+  return { id: "generic", name: "Ultimate", cost: 10, emoji: "⚡", themeColor: "#ffcc33", desc: "A powerful hero-specific ability." };
 }
 
 function getUnlockedUltimateCharges(maxMana) {
