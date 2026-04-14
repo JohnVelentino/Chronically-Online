@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { RC } from "../data/cards.js";
 import useDevConfig from "../dev/useDevConfig.js";
+import TypeBadge from "./TypeBadge.jsx";
 
 function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
@@ -265,6 +266,7 @@ export default function TemplateCardFace({ card, width, height, onFrameError }) 
         fontFamily: "'Cinzel', 'Trajan Pro', serif",
         userSelect: "none",
       }}>
+        <TypeBadge type={isSpell ? "spell" : "minion"} scale={Math.max(0.6, width / 132)} />
         <div style={{ position: "absolute", inset: frameInset, borderRadius: br, overflow: "hidden" }}>
           <div style={{
             position:   "absolute",
@@ -332,6 +334,7 @@ export default function TemplateCardFace({ card, width, height, onFrameError }) 
       fontFamily: "'Cinzel', 'Trajan Pro', serif",
       userSelect: "none",
     }}>
+      <TypeBadge type={isSpell ? "spell" : "minion"} scale={Math.max(0.6, width / 132)} />
       {/* ── Inner clip wrapper ── */}
       <div style={{ position: "absolute", inset: frameInset, borderRadius: br, overflow: "hidden", display: "flex", flexDirection: "column" }}>
 
