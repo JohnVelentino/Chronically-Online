@@ -182,6 +182,42 @@ function StatBadge({ value, type, size, board = false, damaged = false, style = 
   );
 }
 
+// ── Spell orb (used in spell card art slot) ───────────────────────────────────
+function SpellOrb({ emoji, size = 64 }) {
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        position: "relative",
+        background: "radial-gradient(circle at 50% 40%, #d4b0ff 0%, #7a3fcc 45%, #2a0f55 100%)",
+        boxShadow: "0 0 18px #9b6bffaa, inset 0 0 18px #3a1070",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          inset: -4,
+          borderRadius: "50%",
+          background: "conic-gradient(from 0deg, #c8a0ff, transparent 40%, #9b6bff, transparent 80%, #c8a0ff)",
+          animation: "spellOrbSpin 6s linear infinite",
+          opacity: 0.55,
+          pointerEvents: "none",
+        }}
+      />
+      <span style={{ fontSize: size * 0.5, zIndex: 1, filter: "drop-shadow(0 2px 6px rgba(0,0,0,0.7))" }}>
+        {emoji || "✦"}
+      </span>
+      <style>{`@keyframes spellOrbSpin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function TemplateCardFace({ card, width, height, onFrameError }) {
   const [artFailed, setArtFailed] = useState(false);
@@ -271,9 +307,15 @@ export default function TemplateCardFace({ card, width, height, onFrameError }) 
           <div style={{
             position:   "absolute",
             inset:      0,
-            background: `radial-gradient(ellipse at 50% 35%, ${rf.glow.replace("0.","0.14")} 0%, #060c1a 75%)`,
+            background: isSpell
+              ? "radial-gradient(ellipse at 50% 40%, rgba(155,107,255,0.35) 0%, rgba(30,10,55,0.92) 78%)"
+              : `radial-gradient(ellipse at 50% 35%, ${rf.glow.replace("0.","0.14")} 0%, #060c1a 75%)`,
           }}>
-            {artSrc && !artFailed ? (
+            {isSpell ? (
+              <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <SpellOrb emoji={card.emoji} size={Math.min(width, height) * 0.55} />
+              </div>
+            ) : artSrc && !artFailed ? (
               <img
                 src={artSrc}
                 alt={card.name}
@@ -343,9 +385,15 @@ export default function TemplateCardFace({ card, width, height, onFrameError }) 
           <div style={{
             position:   "absolute",
             inset:      0,
-            background: `radial-gradient(ellipse at 50% 35%, ${rf.glow.replace("0.","0.14")} 0%, #060c1a 75%)`,
+            background: isSpell
+              ? "radial-gradient(ellipse at 50% 40%, rgba(155,107,255,0.38) 0%, rgba(30,10,55,0.92) 78%)"
+              : `radial-gradient(ellipse at 50% 35%, ${rf.glow.replace("0.","0.14")} 0%, #060c1a 75%)`,
           }}>
-            {artSrc && !artFailed ? (
+            {isSpell ? (
+              <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <SpellOrb emoji={card.emoji} size={Math.min(width, artH) * 0.78} />
+              </div>
+            ) : artSrc && !artFailed ? (
               <img
                 src={artSrc}
                 alt={card.name}
