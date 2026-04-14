@@ -15,6 +15,7 @@ import DamageNumber from "./components/DamageNumber.jsx";
 import CardBack from "./components/CardBack.jsx";
 import HeroSelect from "./components/HeroSelect.jsx";
 import TemplateCardFace from "./components/TemplateCardFace.jsx";
+import UltimateTooltip from "./components/UltimateTooltip.jsx";
 import useDevConfig from "./dev/useDevConfig.js";
 
 const ATTACK_IMPACT_DELAY_MS = 260;
@@ -162,6 +163,8 @@ export default function App() {
   const enemyBoardContainerRef = useRef(null);
   const [playerBoardW, setPlayerBoardW] = useState(1200);
   const [enemyBoardW, setEnemyBoardW] = useState(1200);
+  const [ultHover, setUltHover] = useState(false);
+  const ultBtnRef = useRef(null);
   const pointerRafRef = useRef(null);
 
   function getMinionRef(uid) {
@@ -1252,9 +1255,25 @@ export default function App() {
         <div className="player-area-zone" style={{ flex: 1, minHeight: 0, position: "relative", overflow: "visible", pointerEvents: "none" }}>
 
           {/* Player hero — fixed to viewport, sits above the arc hand */}
-          <div style={{ position: "fixed", left: `${playerHeroLayout.x}%`, top: `${playerHeroLayout.y}%`, transform: `translate(-50%, -50%) scale(${playerHeroLayout.size / 150})`, transformOrigin: "center center", zIndex: 72, pointerEvents: "auto", filter: "drop-shadow(0 4px 18px rgba(0,0,0,0.70))" }}>
+          <div
+            ref={ultBtnRef}
+            onMouseEnter={() => setUltHover(true)}
+            onMouseLeave={() => setUltHover(false)}
+            style={{ position: "fixed", left: `${playerHeroLayout.x}%`, top: `${playerHeroLayout.y}%`, transform: `translate(-50%, -50%) scale(${playerHeroLayout.size / 150})`, transformOrigin: "center center", zIndex: 72, pointerEvents: "auto", filter: "drop-shadow(0 4px 18px rgba(0,0,0,0.70))" }}
+          >
             <HeroPortrait name={gs.player.name} hp={gs.player.hp} maxHp={gs.player.maxHp} emoji={gs.player.emoji || "🧙"} portrait={devSettings.playerPortrait || gs.player.portrait} armor={gs.player.armor || 0} ultimateInfo={playerUltimateInfo} onUltimateClick={useUltimate} isAI={false} heroRef={playerHeroRef} showName={false} />
           </div>
+          <AnimatePresence>
+            {ultHover && gs?.player && (
+              <UltimateTooltip
+                meta={getUltimateMeta({ id: gs.player.heroId })}
+                unlockedCharges={getUnlockedUltimateCharges(gs.player.maxMana)}
+                usedCharges={gs.player.ultimateUses || 0}
+                maxCharges={ULTIMATE_USE_MAX}
+                anchorRect={ultBtnRef.current?.getBoundingClientRect()}
+              />
+            )}
+          </AnimatePresence>
 
           {/* End Turn button — fixed to viewport right, above the hand arc */}
           <div style={{ position: "fixed", left: `${endTurnBtnLayout.x}%`, top: `${endTurnBtnLayout.y}%`, transform: "translate(-50%, -50%)", zIndex: 220, display: "flex", flexDirection: "column", alignItems: "center", gap: 8, pointerEvents: "auto" }}>
