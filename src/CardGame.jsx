@@ -33,6 +33,20 @@ const BOARD_STAGE_SHIFT_UP_PX = 20;
 const ULTIMATE_USE_MAX = 2;
 const HERO_PORTRAIT_STORAGE_PREFIX = "heroPortrait:";
 
+const BOARD_CARD_MIN_W = 88;
+const BOARD_CARD_MAX_W = 132;
+const BOARD_CARD_ASPECT = 176 / 132;
+const BOARD_SIDE_PAD_PX = 24;
+const BOARD_CARD_GAP_PX = 10;
+
+function computeBoardCardSize(count, zoneWidth) {
+  if (count <= 0) return { w: BOARD_CARD_MAX_W, h: Math.round(BOARD_CARD_MAX_W * BOARD_CARD_ASPECT) };
+  const available = Math.max(0, zoneWidth - BOARD_SIDE_PAD_PX * 2);
+  const raw = (available / count) - BOARD_CARD_GAP_PX;
+  const w = Math.max(BOARD_CARD_MIN_W, Math.min(BOARD_CARD_MAX_W, Math.floor(raw)));
+  return { w, h: Math.round(w * BOARD_CARD_ASPECT) };
+}
+
 function readDevSettings() {
   let playerPortrait = null, enemyPortrait = null;
   try {
@@ -124,6 +138,9 @@ export default function App() {
   const enemyHeroRef = useRef(null);
   const minionRefs = useRef({});
   const playerBoardContainerRef = useRef(null);
+  const enemyBoardContainerRef = useRef(null);
+  const [playerBoardW, setPlayerBoardW] = useState(1200);
+  const [enemyBoardW, setEnemyBoardW] = useState(1200);
   const pointerRafRef = useRef(null);
 
   function getMinionRef(uid) {
@@ -167,6 +184,22 @@ export default function App() {
     return () => {
       document.documentElement.style.overflow = prevHtmlOverflow;
       document.body.style.overflow = prevBodyOverflow;
+    };
+  }, [phase]);
+
+  useEffect(() => {
+    function measure() {
+      if (playerBoardContainerRef.current) setPlayerBoardW(playerBoardContainerRef.current.clientWidth);
+      if (enemyBoardContainerRef.current) setEnemyBoardW(enemyBoardContainerRef.current.clientWidth);
+    }
+    measure();
+    const ro = new ResizeObserver(measure);
+    if (playerBoardContainerRef.current) ro.observe(playerBoardContainerRef.current);
+    if (enemyBoardContainerRef.current) ro.observe(enemyBoardContainerRef.current);
+    window.addEventListener("resize", measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
     };
   }, [phase]);
 
@@ -1119,16 +1152,17 @@ export default function App() {
 
         {/* ── Zone 2 — Enemy Battlefield ────────────────────────── */}
         {(() => {
-          const mW = 132;
-          const mH = Math.round(mW * (176 / 132));
+          const playerSize = computeBoardCardSize(gs?.player?.board?.length || 0, playerBoardW);
+          const enemySize  = computeBoardCardSize(gs?.ai?.board?.length || 0, enemyBoardW);
           const showBreathing = visualCfg.cardIdleBreathing !== false;
           const showParticles = visualCfg.ambientParticles !== false;
           const showLabels = visualCfg.showZoneLabels === true;
           return (
             <>
             <div
+              ref={enemyBoardContainerRef}
               className="board-zone board-zone--enemy"
-              style={{ position: "absolute", top: `${enemyBattlefieldLayout.y}%`, left: 0, right: 0, height: `${enemyBattlefieldLayout.height}%`, minHeight: 0, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", gap: BOARD_ZONE_GAP_PX, padding: `8px ${BOARD_ZONE_PAD_X_PX}px`, ...boardHitStyle, ...(draggingCard ? { borderColor: "#FAC775", boxShadow: "0 0 16px rgba(250,199,117,0.5)" } : {}) }}
+              style={{ position: "absolute", top: `${enemyBattlefieldLayout.y}%`, left: 0, right: 0, height: `${enemyBattlefieldLayout.height}%`, minHeight: 0, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", flexWrap: "nowrap", gap: BOARD_CARD_GAP_PX, padding: `8px ${BOARD_ZONE_PAD_X_PX}px`, ...boardHitStyle, ...(draggingCard ? { borderColor: "#FAC775", boxShadow: "0 0 16px rgba(250,199,117,0.5)" } : {}) }}
             >
               {showParticles && <BoardAmbience color="rgba(68,128,196,0.18)" zone="enemy" />}
               {showLabels && gs.ai.board.length === 0 && <div className="board-zone-empty-label">— enemy board —</div>}
@@ -1138,7 +1172,7 @@ export default function App() {
                   return (
                     <BoardMinion
                       key={m.uid} minion={m} minionRef={ref}
-                      cardW={mW} cardH={mH} showBreathing={showBreathing}
+                      cardW={enemySize.w} cardH={enemySize.h} showBreathing={showBreathing}
                       isSelected={!!ciaUltSelection?.minionUids.includes(m.uid)}
                       isTarget={(isTargeting && (!aiHasTaunt || m.keywords?.includes("taunt"))) || !!ciaUltSelection}
                       isAttacking={attackVisual?.attacker === m.uid}
@@ -1160,7 +1194,7 @@ export default function App() {
             <div
               ref={playerBoardContainerRef}
               className={`board-zone board-zone--player${isOverPlayZone && !!selCard && !tgtSpell ? " board-zone--drop-active" : ""}`}
-              style={{ position: "absolute", top: `${playerBattlefieldLayout.y}%`, left: 0, right: 0, height: `${playerBattlefieldLayout.height}%`, minHeight: 0, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", gap: BOARD_ZONE_GAP_PX, padding: `8px ${BOARD_ZONE_PAD_X_PX}px`, ...boardHitStyle }}
+              style={{ position: "absolute", top: `${playerBattlefieldLayout.y}%`, left: 0, right: 0, height: `${playerBattlefieldLayout.height}%`, minHeight: 0, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", flexWrap: "nowrap", gap: BOARD_CARD_GAP_PX, padding: `8px ${BOARD_ZONE_PAD_X_PX}px`, ...boardHitStyle }}
             >
               {showParticles && <BoardAmbience color="rgba(40,138,111,0.2)" zone="player" />}
               {showLabels && gs.player.board.length === 0 && <div className="board-zone-empty-label">— your board —</div>}
@@ -1170,7 +1204,7 @@ export default function App() {
                   return (
                     <BoardMinion
                       key={m.uid} minion={m} minionRef={ref}
-                      cardW={mW} cardH={mH} showBreathing={showBreathing}
+                      cardW={playerSize.w} cardH={playerSize.h} showBreathing={showBreathing}
                       isSelected={selAtk === m.uid}
                       isTarget={!!(tgtSpell && (tgtSpell.targetType === "minion" || tgtSpell.targetType === "any"))}
                       isAttacking={attackVisual?.attacker === m.uid}
