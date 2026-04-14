@@ -15,6 +15,9 @@ dist-ssr
 # Claude Code
 .claude/settings.local.json
 
+# Worktrees
+.worktrees
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
