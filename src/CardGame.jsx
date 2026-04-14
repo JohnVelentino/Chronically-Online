@@ -682,16 +682,16 @@ export default function App() {
         },
       };
 
-      summon({ id: "starshield_colossus", name: "Starshield Colossus", type: "minion", cost: 0, rarity: "legendary", class: "Elon", atk: 4, hp: 12, emoji: "🛡️", keywords: ["taunt"], desc: "Taunt" });
-      summon({ id: "aegis_protocol_titan", name: "Aegis Protocol Titan", type: "minion", cost: 0, rarity: "legendary", class: "Elon", atk: 8, hp: 8, emoji: "🤖", keywords: [], desc: "Titanic warframe." });
-      summon({ id: "falcon_sentinel_mk_x", name: "Falcon Sentinel Mk-X", type: "minion", cost: 0, rarity: "legendary", class: "Elon", atk: 2, hp: 6, emoji: "🚀", keywords: ["taunt"], desc: "Taunt" });
+      summon({ id: "starshield_colossus", name: "Starshield Colossus", type: "minion", cost: 0, rarity: "legendary", class: "Tech", atk: 4, hp: 12, emoji: "🛡️", keywords: ["taunt"], desc: "Taunt" });
+      summon({ id: "aegis_protocol_titan", name: "Aegis Protocol Titan", type: "minion", cost: 0, rarity: "legendary", class: "Tech", atk: 8, hp: 8, emoji: "🤖", keywords: [], desc: "Titanic warframe." });
+      summon({ id: "falcon_sentinel_mk_x", name: "Falcon Sentinel Mk-X", type: "minion", cost: 0, rarity: "legendary", class: "Tech", atk: 2, hp: 6, emoji: "🚀", keywords: ["taunt"], desc: "Taunt" });
       summon({
         id: "orbital_guardian_unit",
         name: "Orbital Guardian Unit",
         type: "minion",
         cost: 0,
         rarity: "legendary",
-        class: "Elon",
+        class: "Tech",
         atk: 2,
         hp: 8,
         emoji: "🛰️",

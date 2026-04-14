@@ -121,10 +121,10 @@ export default function HeroSelect({ onSelect }) {
     },
     {
       id: "elon",
-      label: "Elon",
+      label: "Tech",
       subtitle: "Rocket chaos, tech flexing, and posting through the apocalypse.",
-      themeColor: "#1a8adc",
-      glowColor: "rgba(26,138,220,0.35)",
+      themeColor: "#00e6c8",
+      glowColor: "rgba(0,230,200,0.35)",
     },
   ];
 

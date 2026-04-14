@@ -44,19 +44,19 @@ function LibraryCardPreview({ card, anchorRect }) {
 }
 
 // Normalise class to lowercase key for tab comparison.
-// Cards in data use "USA!", "Elon", "neutral", or undefined (also neutral).
+// Cards in data use "USA!", "Tech", "neutral", or undefined (also neutral).
 function cardClassKey(card) {
   const raw = card.class;
   if (!raw || raw.toLowerCase() === "neutral") return "neutral";
   if (raw.toLowerCase().startsWith("usa")) return "usa";
-  if (raw.toLowerCase().startsWith("elon")) return "elon";
+  if (raw.toLowerCase().startsWith("tech")) return "tech";
   return raw.toLowerCase();
 }
 
 const LIB_TABS = [
   { id: "all",     label: "ALL" },
   { id: "usa",     label: "USA!" },
-  { id: "elon",    label: "ELON" },
+  { id: "tech",    label: "TECH" },
   { id: "neutral", label: "NEUTRAL" },
 ];
 
@@ -119,7 +119,7 @@ const RARITY_OPTIONS = [
 const CLASS_OPTIONS = [
   { id: "neutral", label: "Neutral",  color: "#5a6070" },
   { id: "USA!",    label: "USA!",     color: "#cc2222" },
-  { id: "Elon",    label: "Elon",     color: "#1a8adc" },
+  { id: "Tech",    label: "Tech",     color: "#00e6c8" },
 ];
 
 const FORGE_KEYWORDS = [
@@ -568,7 +568,7 @@ function DevTabSection({ onDevSettingsChange }) {
     cost: 3,
     rarity: "rare",
     type: "spell",
-    class: "elon",
+    class: "tech",
     emoji: "⚡",
     effectText: "Deal 3 damage. Draw 1 card if your hand is low.",
     keywords: ["combo"],
@@ -1517,7 +1517,7 @@ export default function CardCreator({ onClose, savedDecks = [], onSavedDecksChan
                     // Per-tab accent colours
                     const accent =
                       lt.id === "usa"     ? "#cc2222" :
-                      lt.id === "elon"    ? "#1a8adc" :
+                      lt.id === "tech"    ? "#00e6c8" :
                       lt.id === "neutral" ? "#5a6070" :
                                             "#378ADD";
                     return (

@@ -653,13 +653,13 @@ const SPELL_EFFECT_MAP = {
   red_button: [{ type: "damage_hero_with_board_condition", baseDamage: 6, bonusDamage: 10, enemyMustHaveNoMinions: true }],
   the_nuke: [{ type: "destroy_all_minions_damage_both_heroes", amount: 10 }],
   neural_link: [{ type: "copy_random_card_from_hand" }],
-  autopilot_swarm: [{ type: "summon_token", count: 4, token: { id: "rush_bot", name: "Bot", atk: 1, hp: 1, class: "elon", keywords: ["rush"] } }],
+  autopilot_swarm: [{ type: "summon_token", count: 4, token: { id: "rush_bot", name: "Bot", atk: 1, hp: 1, class: "tech", keywords: ["rush"] } }],
   satellite_grid: [{ type: "deal_aoe_draw_per_kill", targetGroup: "all_enemies", amount: 1 }],
   launch_window: [{ type: "buff_minion", attackDelta: 3, healthDelta: 0, duration: "turn", targetIdFrom: "input_target" }, { type: "grant_immediate_attack", targetIdFrom: "input_target", targetMode: "any" }],
   x_rebrand_control: [{ type: "take_control", targetIdFrom: "input_target", duration: "turn", keepOnKill: true }],
   liquidation_acquisition: [{ type: "take_control", targetIdFrom: "input_target", duration: "permanent" }],
   hyperloop_burst: [{ type: "random_multi_attack", targetIdFrom: "input_target", hits: 3 }],
-  mars_colony_protocol: [{ type: "summon_random_class_minions_from_deck", className: "elon", count: 5 }],
+  mars_colony_protocol: [{ type: "summon_random_class_minions_from_deck", className: "tech", count: 5 }],
 };
 
 export function applySpell(effect, targetId, gs, side, sourceCard = null) {

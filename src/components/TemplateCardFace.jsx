@@ -13,10 +13,9 @@ function clamp(n, min, max) {
 export const CLASS_PALETTE = {
   "usa!":    { accent: "#f87171", border: "#c03040", text: "#f87171" },
   "usa":     { accent: "#f87171", border: "#c03040", text: "#f87171" },
-  "elon":    { accent: "#3b9eff", border: "#3a80d0", text: "#3b9eff" },
+  "tech":    { accent: "#00e6c8", border: "#00e6c8", text: "#9ef4e0" },
   "neutral": { accent: "#94a3b8", border: "#445566", text: "#94a3b8" },
   "gen z":   { accent: "#a78bfa", border: "#9040c8", text: "#a78bfa" },
-  "tech":    { accent: "#34d399", border: "#00aacc", text: "#34d399" },
   "space":   { accent: "#a78bfa", border: "#c88800", text: "#a78bfa" },
   "battle":  { accent: "#f87171", border: "#c03040", text: "#f87171" },
   "meme":    { accent: "#fb923c", border: "#b85a00", text: "#fb923c" },
