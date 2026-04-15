@@ -72,7 +72,7 @@ function getUltimateMeta(hero) {
   if (heroId === "trump") return {
     id: "trump",
     name: "The Japan Special",
-    cost: 10,
+    cost: 0,
     emoji: "🇯🇵",
     themeColor: "#cc2222",
     desc: "Deal 8 damage to all enemies and summon 2× The Wall.",
@@ -80,7 +80,7 @@ function getUltimateMeta(hero) {
   if (heroId === "cia") return {
     id: "cia",
     name: "Deep State Download",
-    cost: 10,
+    cost: 0,
     emoji: "🛰️",
     themeColor: "#6dc6d6",
     desc: "Take control of up to 2 enemy minions and steal 1 card from their hand.",
@@ -88,12 +88,12 @@ function getUltimateMeta(hero) {
   if (heroId === "elon") return {
     id: "elon",
     name: "Future Tech",
-    cost: 10,
+    cost: 0,
     emoji: "🚀",
     themeColor: "#00e6c8",
-    desc: "Summon Mars Colony and give all friendlies Charge.",
+    desc: "Summon a 8/8, a 4/12 Taunt, a 2/6 Taunt and a 2/8 Space Army. +5 Aura this turn, +10 Armor forever.",
   };
-  return { id: "generic", name: "Ultimate", cost: 10, emoji: "⚡", themeColor: "#ffcc33", desc: "A powerful hero-specific ability." };
+  return { id: "generic", name: "Ultimate", cost: 0, emoji: "⚡", themeColor: "#ffcc33", desc: "A powerful hero-specific ability." };
 }
 
 function getUnlockedUltimateCharges(maxMana) {
@@ -147,8 +147,8 @@ export default function App() {
   const visualCfg = devConfig?.visual || {};
   const enemyHeroLayout = layoutCfg.enemyHero || { x: 50, y: 8, size: 120 };
   const playerHeroLayout = layoutCfg.playerHero || { x: 50, y: 85, size: 120 };
-  const enemyBattlefieldLayout = layoutCfg.enemyBattlefield || { y: 28, height: 22 };
-  const playerBattlefieldLayout = layoutCfg.playerBattlefield || { y: 58, height: 22 };
+  const enemyBattlefieldLayout = layoutCfg.enemyBattlefield || { y: 26, height: 24 };
+  const playerBattlefieldLayout = layoutCfg.playerBattlefield || { y: 50, height: 24 };
   const enemyHandLayout = layoutCfg.enemyHand || { y: 4, fanAngle: 4 };
   const playerHandLayout = layoutCfg.playerHand || { y: 92, fanAngle: 6 };
   const endTurnBtnLayout = layoutCfg.endTurnBtn || { x: 92, y: 50 };
@@ -1211,8 +1211,8 @@ export default function App() {
               </AnimatePresence>
             </div>
 
-            {/* hairline between battlefield zones */}
-            {visualCfg.showBattlefieldDivider && <div style={{ position: "absolute", left: 32, right: 32, top: `${playerBattlefieldLayout.y}%`, height: 1, background: "rgba(255,255,255,0.08)", flexShrink: 0 }} />}
+            {/* glowing horizon line between battlefield zones */}
+            <div style={{ position: "absolute", left: 24, right: 24, top: `${playerBattlefieldLayout.y}%`, height: 2, transform: "translateY(-1px)", background: "linear-gradient(90deg, transparent 0%, rgba(120,180,240,0.35) 20%, rgba(200,230,255,0.55) 50%, rgba(120,180,240,0.35) 80%, transparent 100%)", boxShadow: "0 0 14px rgba(120,180,240,0.35)", pointerEvents: "none", zIndex: 3, flexShrink: 0 }} />
 
             {/* ── Zone 3 — Player Battlefield ───────────────────────── */}
             <div
