@@ -11,6 +11,7 @@ import BoardAmbience from "./components/BoardAmbience.jsx";
 import CardCreator from "./components/CardCreator.jsx";
 import HandCard from "./components/HandCard.jsx";
 import MulliganScreen from "./components/MulliganScreen.jsx";
+import RulesScreen from "./components/RulesScreen.jsx";
 import HeroPortrait from "./components/HeroPortrait.jsx";
 import DamageNumber from "./components/DamageNumber.jsx";
 import CardBack from "./components/CardBack.jsx";
@@ -1732,6 +1733,12 @@ export default function App() {
               const rulesSeen = (() => { try { return localStorage.getItem("co_rules_seen_v1") === "1"; } catch { return false; } })();
               setPhase(rulesSeen ? "player_turn" : "rules");
             }}
+          />
+        )}
+        {phase === "rules" && (
+          <RulesScreen
+            key="rules-screen"
+            onContinue={() => setPhase("player_turn")}
           />
         )}
       </AnimatePresence>
