@@ -1,5 +1,80 @@
 import { drawCard } from "./gameState.js";
-import { applySpell, playBattlecry, doAttack, createMinionEntity } from "./combat.js";
+import { applySpell, playBattlecry, doAttack, createMinionEntity, destroyAllMinions, damageHero, takeControlOfMinion, stealCardFromHandByUid } from "./combat.js";
+
+function getUnlockedCharges(maxMana) {
+  let n = 0;
+  if ((maxMana || 0) >= 5) n += 1;
+  if ((maxMana || 0) >= 10) n += 1;
+  return n;
+}
+
+function resolveAiUltimate(gs, heroId) {
+  const log = [];
+  let ng = gs;
+  if (heroId === "trump") {
+    ng = destroyAllMinions(ng, "ai");
+    ng = damageHero(ng, "player", 15);
+    ng = damageHero(ng, "ai", 10);
+    log.push("🔥 AI unleashes The Japan Special!", "All minions destroyed. Your hero -15, AI hero -10.");
+  } else if (heroId === "cia") {
+    const targets = [...ng.player.board].sort((a, b) => (b.atk + b.hp) - (a.atk + a.hp)).slice(0, 2);
+    for (const m of targets) {
+      ng = takeControlOfMinion(ng, m.uid, "ai", "permanent", "ai", { keepOnKill: false });
+    }
+    if (ng.player.hand.length > 0 && ng.ai.hand.length < 10) {
+      const pick = ng.player.hand[Math.floor(Math.random() * ng.player.hand.length)];
+      ng = stealCardFromHandByUid(ng, "ai", "player", pick.uid);
+    }
+    log.push("🛰️ AI activates Deep State Download!", `Took control of ${targets.length} minion(s) and stole a card.`);
+  } else if (heroId === "elon") {
+    const summon = (def) => {
+      if (ng.ai.board.length >= 7) return;
+      ng = { ...ng, ai: { ...ng.ai, board: [...ng.ai.board, createMinionEntity(def)] } };
+    };
+    ng = {
+      ...ng,
+      ai: {
+        ...ng.ai,
+        mana: Math.min(10, (ng.ai.mana || 0) + 5),
+        tempAuraBonus: (ng.ai.tempAuraBonus || 0) + 5,
+        armor: (ng.ai.armor || 0) + 10,
+      },
+    };
+    summon({ id: "starshield_colossus", name: "Starshield Colossus", type: "minion", cost: 0, rarity: "legendary", class: "Tech", atk: 4, hp: 12, emoji: "🛡️", keywords: ["taunt"], desc: "Taunt" });
+    summon({ id: "aegis_protocol_titan", name: "Aegis Protocol Titan", type: "minion", cost: 0, rarity: "legendary", class: "Tech", atk: 8, hp: 8, emoji: "🤖", keywords: [], desc: "Titanic warframe." });
+    summon({ id: "falcon_sentinel_mk_x", name: "Falcon Sentinel Mk-X", type: "minion", cost: 0, rarity: "legendary", class: "Tech", atk: 2, hp: 6, emoji: "🚀", keywords: ["taunt"], desc: "Taunt" });
+    summon({
+      id: "orbital_guardian_unit",
+      name: "Orbital Guardian Unit",
+      type: "minion",
+      cost: 0,
+      rarity: "legendary",
+      class: "Tech",
+      atk: 2,
+      hp: 8,
+      emoji: "🛰️",
+      keywords: ["deathrattle"],
+      desc: "End of your turn: draw 1 and deal 4 to a random enemy minion. Deathrattle: deal 8 to all friendly minions.",
+      effectConfig: {
+        end_of_turn: [
+          { type: "draw_cards", amount: 1 },
+          { type: "deal_damage_random_enemy_minion", amount: 4 },
+        ],
+        on_death: { type: "deal_damage_all", targetGroup: "friendly_minions", amount: 8 },
+      },
+    });
+    log.push("⚙️ AI fires Future Tech!", "+5 Aura, +10 Armor, 4 elite units deployed.");
+  }
+  ng = {
+    ...ng,
+    ai: {
+      ...ng.ai,
+      ultimateUses: (ng.ai.ultimateUses || 0) + 1,
+      ultimateUsedThisTurn: true,
+    },
+  };
+  return { gs: ng, log };
+}
 
 const BUFF_EFFECT_IDS = new Set([
   "energy_drink",
@@ -74,6 +149,27 @@ export function runAiTurnSteps(gs) {
       gs = r.gs;
       steps.push({ type: "play_card", card, verb: "plays", gs, log: ["AI plays " + card.name, ...r.log] });
     } else break;
+  }
+
+  // ── Ultimate phase ───────────────────────────────────────────────────────────
+  {
+    const heroId = gs.ai.heroId;
+    const unlocked = getUnlockedCharges(gs.ai.maxMana);
+    const used = gs.ai.ultimateUses || 0;
+    const available = Math.max(0, unlocked - used);
+    const canUlt = heroId && available > 0 && !gs.ai.ultimateUsedThisTurn;
+    if (canUlt) {
+      const threat = gs.player.board.reduce((s, m) => s + (m.atk || 0), 0);
+      const lowHp = (gs.ai.hp || 0) < 18;
+      const finisher = (gs.player.hp || 0) <= 16 && heroId === "trump";
+      const dumpLate = gs.ai.maxMana >= 9;
+      const shouldUlt = lowHp || finisher || dumpLate || threat >= 6 || unlocked === 2;
+      if (shouldUlt) {
+        const r = resolveAiUltimate(gs, heroId);
+        gs = r.gs;
+        steps.push({ type: "ai_ultimate", heroId, gs, log: r.log });
+      }
+    }
   }
 
   // ── Attack phase ─────────────────────────────────────────────────────────────

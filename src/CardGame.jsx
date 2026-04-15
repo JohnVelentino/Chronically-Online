@@ -817,7 +817,7 @@ export default function App() {
       const aiTurnState = startTurn(baseGs, "ai");
       const startGs = {
         ...aiTurnState,
-        ai: { ...aiTurnState.ai, maxMana: aiMax, mana: aiMax, pendingManaNextTurn: 0 },
+        ai: { ...aiTurnState.ai, maxMana: aiMax, mana: aiMax, pendingManaNextTurn: 0, ultimateUsedThisTurn: false, tempAuraBonus: 0 },
       };
 
       const { steps, finalGs } = runAiTurnSteps(startGs);
@@ -886,6 +886,32 @@ export default function App() {
             },
           });
 
+        } else if (step.type === "ai_ultimate") {
+          const ultMeta = getUltimateMeta(step.heroId);
+          setAiPlayOverlay({
+            card: {
+              id: `ai_ult_${step.heroId}`,
+              name: ultMeta.name,
+              emoji: ultMeta.emoji,
+              type: "spell",
+              effect: ultMeta.desc,
+              desc: ultMeta.desc,
+              rarity: "legendary",
+              cost: 0,
+            },
+            label: "ENEMY ULTIMATE:",
+          });
+          schedule(() => {
+            setAiPlayOverlay(null);
+            setGs(step.gs);
+            pushLog(step.log);
+            addAiAction(ultMeta.emoji || "⚡", step.log[0] || "Enemy ultimate!");
+            setAiActionHighlight(true);
+            schedule(() => setAiActionHighlight(false), 700);
+            const w = checkWin(step.gs);
+            if (w) { resolveWin(w, step.gs); return; }
+            schedule(runNextStep, STEP_DELAY);
+          }, ENEMY_REVEAL_DURATION_MS);
         } else if (step.type === "attack") {
           const attacker = gs.ai.board.find(m => m.uid === step.attackerUid) || startGs.ai.board.find(m => m.uid === step.attackerUid);
           if (attacker) triggerAttackVisual(step.attackerUid, step.defenderUid, attacker.atk);
