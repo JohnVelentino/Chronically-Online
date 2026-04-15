@@ -25,7 +25,8 @@ export default function TypeBadge({ type = "minion", scale = 1 }) {
       style={{
         position: "absolute",
         top: 4,
-        left: 4,
+        left: "50%",
+        transform: "translateX(-50%)",
         zIndex: 5,
         display: "flex",
         alignItems: "center",
