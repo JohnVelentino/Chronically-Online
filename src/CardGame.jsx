@@ -1387,24 +1387,27 @@ export default function App() {
         const maxAngle = Math.min(n * Math.max(0, enemyHandLayout.fanAngle || 0), 40);
         const angleStep = n > 1 ? maxAngle / (n - 1) : 0;
         return (
-          <div style={{ position: "fixed", top: `${enemyHandLayout.y}%`, left: "50%", transform: "translateX(-50%)", zIndex: 65, pointerEvents: showingCards ? "auto" : "none" }}>
-            <div style={{ position: "relative", width: fanW, height: showingCards ? 112 : 56, flexShrink: 0 }}>
+          <div style={{ position: "fixed", top: `${enemyHandLayout.y}%`, left: "50%", transform: "translateX(-50%)", zIndex: showingCards ? 100 : 65, pointerEvents: showingCards ? "auto" : "none" }}>
+            <div style={{ position: "relative", width: showingCards ? Math.max(fanW, n * 100) : fanW, height: showingCards ? 220 : 56, flexShrink: 0 }}>
               {n === 0
                 ? <div style={{ fontSize: 9, color: "#1a2530", lineHeight: "56px", textAlign: "center" }}>empty</div>
                 : gs.ai.hand.map((card, idx) => {
                     const mid = (n - 1) / 2;
                     const angle = (idx - mid) * angleStep;
-                    const xOff = (idx - mid) * SPACING;
+                    const revealedSpacing = 100;
+                    const xOff = showingCards ? (idx - mid) * revealedSpacing : (idx - mid) * SPACING;
                     return (
-                      <div key={idx} style={{
-                        position: "absolute", top: 0, left: "50%",
-                        transform: `translateX(calc(-50% + ${xOff}px)) rotate(${angle}deg)`,
-                        transformOrigin: "center top",
-                        zIndex: idx,
-                        pointerEvents: showingCards ? "auto" : "none",
-                      }}>
+                      <div key={idx}
+                        className={showingCards ? "enemy-revealed-card-wrap" : undefined}
+                        style={{
+                          position: "absolute", top: 0, left: "50%",
+                          transform: `translateX(calc(-50% + ${xOff}px)) rotate(${showingCards ? 0 : angle}deg)`,
+                          transformOrigin: "center top",
+                          zIndex: idx,
+                          pointerEvents: showingCards ? "auto" : "none",
+                        }}>
                         {showingCards ? (
-                          <div style={{ transform: "scale(0.42)", transformOrigin: "top center" }}>
+                          <div className="enemy-revealed-card">
                             <HandCard
                               card={card}
                               selected={!!ciaUltSelection?.handUids.includes(card.uid)}
