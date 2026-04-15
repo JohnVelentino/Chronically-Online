@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
 import { getLib, RC, HEROES } from "./data/cards.js";
 import { getSFX } from "./audio/sfx.js";
-import { drawCard, initPlayer, makeDeckFrom, mkUid } from "./engine/gameState.js";
+import { drawCard, initPlayer, makeDeckFrom, mkUid, mulliganHand } from "./engine/gameState.js";
 import { applySpell, doAttack, playBattlecry, createMinionEntity, damageHero, destroyAllMinions, resolveEndOfTurn, revealHand, startTurn, stealCardFromHandByUid, takeControlOfMinion } from "./engine/combat.js";
 import { runAiTurnSteps } from "./engine/ai.js";
 import ArrowOverlay from "./components/ArrowOverlay.jsx";
@@ -10,6 +10,7 @@ import BoardMinion from "./components/BoardMinion.jsx";
 import BoardAmbience from "./components/BoardAmbience.jsx";
 import CardCreator from "./components/CardCreator.jsx";
 import HandCard from "./components/HandCard.jsx";
+import MulliganScreen from "./components/MulliganScreen.jsx";
 import HeroPortrait from "./components/HeroPortrait.jsx";
 import DamageNumber from "./components/DamageNumber.jsx";
 import CardBack from "./components/CardBack.jsx";
@@ -377,7 +378,7 @@ export default function App() {
       player: { ...initPlayer(heroName, false, heroDeck), heroId: hero?.id || null, maxMana: 1, mana: 1, armor: 0, ultimateUses: 0, ultimateUsedThisTurn: false, emoji: heroEmoji, portrait: heroPortrait, cardBack: heroCardBack },
       ai: { ...initPlayer(aiHero.name, true, aiDeck), heroId: aiHero.id, maxMana: 0, mana: 0, armor: 0, ultimateUses: 0, ultimateUsedThisTurn: false, portrait: getHeroPortraitFromStorage(aiHero), cardBack: aiHero.cardBack || null, emoji: aiHero.emoji },
     });
-    setPhase("player_turn");
+    setPhase("mulligan");
     setLog(["🎮 Game on! No cap."]);
     setWinner(null);
     setSelCard(null);
@@ -1718,6 +1719,22 @@ export default function App() {
           }}
         />
       )}
+
+      <AnimatePresence>
+        {phase === "mulligan" && gs && (
+          <MulliganScreen
+            key="mulligan-screen"
+            hand={gs.player.hand}
+            onConfirm={(uids) => {
+              if (uids.length) {
+                setGs(prev => ({ ...prev, player: mulliganHand(prev.player, uids) }));
+              }
+              const rulesSeen = (() => { try { return localStorage.getItem("co_rules_seen_v1") === "1"; } catch { return false; } })();
+              setPhase(rulesSeen ? "player_turn" : "rules");
+            }}
+          />
+        )}
+      </AnimatePresence>
 
       {selCard && !tgtSpell && cursorPos && (
         <div style={{ position: "fixed", left: cursorPos.x - 53, top: cursorPos.y - 73, width: 106, pointerEvents: "none", zIndex: 1000, opacity: 0.95 }}>

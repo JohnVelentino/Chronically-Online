@@ -51,3 +51,13 @@ export function initPlayer(name, isAI = false, customDeck = null) {
   const deck = shuffleCards(customDeck || makeDeck());
   return { name, isAI, hp: 40, maxHp: 40, armor: 0, mana: 0, maxMana: 0, deck: deck.slice(4), hand: deck.slice(0, 4), board: [], lastFatigueDamage: 0, lastFatigueBlocked: 0 };
 }
+
+export function mulliganHand(player, replaceUids = []) {
+  if (!player || !replaceUids.length) return player;
+  const keep = player.hand.filter(c => !replaceUids.includes(c.uid));
+  const tossed = player.hand.filter(c => replaceUids.includes(c.uid));
+  const reshuffledDeck = shuffleCards([...player.deck, ...tossed]);
+  const drawn = reshuffledDeck.slice(0, tossed.length);
+  const remainingDeck = reshuffledDeck.slice(tossed.length);
+  return { ...player, hand: [...keep, ...drawn], deck: remainingDeck };
+}
