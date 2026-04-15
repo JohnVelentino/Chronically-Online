@@ -1366,13 +1366,34 @@ export default function App() {
                   return (
                     <motion.div
                       key={pendingDrawCard.uid}
-                      initial={{ opacity: 0.8, y: -20 }}
-                      animate={{ opacity: 0.95, y: 0 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.6 }}
-                      style={{ width: 100, minWidth: 100, height: 148, background: rc.bg, border: "2px solid " + rc.border, borderRadius: 12, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", pointerEvents: "none", boxShadow: "0 6px 20px rgba(0,0,0,0.45)" }}
+                      initial={{ opacity: 0, scale: 0.35, rotate: -28, y: 60, x: 30 }}
+                      animate={{
+                        opacity: [0, 1, 1, 0.95],
+                        scale: [0.35, 1.18, 0.95, 1],
+                        rotate: [-28, 6, -2, 0],
+                        y: [60, -10, 4, 0],
+                        x: [30, 0, 0, 0],
+                      }}
+                      exit={{ opacity: 0, scale: 0.9, y: -30, transition: { duration: 0.25 } }}
+                      transition={{ duration: 0.75, times: [0, 0.45, 0.75, 1], ease: [0.25, 0.9, 0.35, 1] }}
+                      style={{ position: "relative", width: 100, minWidth: 100, height: 148, background: rc.bg, border: "2px solid " + rc.border, borderRadius: 12, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", pointerEvents: "none", boxShadow: `0 10px 30px rgba(0,0,0,0.6), 0 0 24px ${rc.glow}` }}
                     >
-                      <div style={{ fontSize: 48, filter: "drop-shadow(0 3px 8px " + rc.glow + ")" }}>{pendingDrawCard.emoji || "🃏"}</div>
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: [0, 0.8, 0] }}
+                        transition={{ duration: 0.75, times: [0, 0.4, 1] }}
+                        style={{ position: "absolute", inset: -6, borderRadius: 16, background: `radial-gradient(circle at 50% 50%, ${rc.glow} 0%, transparent 70%)`, pointerEvents: "none", zIndex: 0 }}
+                      />
+                      <span
+                        aria-hidden
+                        style={{
+                          position: "absolute", top: 0, left: "-60%", width: "60%", height: "100%",
+                          background: "linear-gradient(115deg, transparent 0%, rgba(255,255,255,0.65) 50%, transparent 100%)",
+                          animation: "ultimateShimmer 0.75s ease-out 1",
+                          pointerEvents: "none",
+                        }}
+                      />
+                      <div style={{ position: "relative", fontSize: 48, filter: `drop-shadow(0 3px 10px ${rc.glow})`, zIndex: 1 }}>{pendingDrawCard.emoji || "🃏"}</div>
                     </motion.div>
                   );
                 })()}
