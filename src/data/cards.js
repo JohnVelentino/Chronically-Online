@@ -25,6 +25,7 @@ export const HEROES = [
     name: "CIA",
     class: "USA!",
     emoji: "🕵️",
+    portrait: "/assets/heroes/cia.png",
     cardBack: "/assets/card-backs/usa-back.png",
     bio: "Black-budget ops, classified memes, and absolutely nothing under Antarctica.",
     themeColor: "#6dc6d6",
@@ -52,6 +53,70 @@ export const HEROES = [
       "sigma","streamer","doomer","doomer","vibe_check","lowkey","rizz","founder",
     ],
   },
+  {
+    id: "zuck",
+    name: "Mark Zuckerberg",
+    class: "Tech",
+    emoji: "🦎",
+    portrait: "/assets/heroes/zuck.png",
+    cardBack: "/assets/card-backs/zuck-back.png",
+    bio: "Friends list harvested. Privacy policy updated. Blinking is optional.",
+    themeColor: "#4ac29a",
+    glowColor: "rgba(74,194,154,0.55)",
+    deckIds: [
+      "data_harvest","data_harvest","prism_protocol","prism_protocol","lizard_form","lizard_form",
+      "beyond_meat","beyond_meat","hawaiian_compound","mma_cage_match","algorithm_tweak","algorithm_tweak",
+      "blue_checkmark","shadow_ban","senate_hearing","rayban_meta","npc","npc","ratio","lowkey",
+    ],
+  },
+  {
+    id: "tate",
+    name: "Andrew Tate",
+    class: "Viral",
+    emoji: "👊",
+    portrait: "/assets/heroes/tate.png",
+    cardBack: "/assets/card-backs/tate-back.png",
+    bio: "Top G. What color is your Bugatti? Escape the matrix, brokie.",
+    themeColor: "#d4af37",
+    glowColor: "rgba(212,175,55,0.6)",
+    deckIds: [
+      "welcome_real_world","welcome_real_world","real_world_uni","real_world_uni","escape_matrix","escape_matrix",
+      "hustlers_u","hustlers_u","cold_plunge_4am","cold_plunge_4am","top_g_mindset","andrews_cigar",
+      "red_pill","sparring_cobratate","romanian_compound","marcell","bailey_bolton","luc","alex_tate","smallex",
+    ],
+  },
+  {
+    id: "pewdiepie",
+    name: "PewDiePie",
+    class: "Viral",
+    emoji: "🎮",
+    portrait: "/assets/heroes/pewdiepie.png",
+    cardBack: "/assets/card-backs/pewdiepie-back.png",
+    bio: "Bro Army, assemble. 9-year-olds rise up. T-Series can catch these hands.",
+    themeColor: "#2f64ff",
+    glowColor: "rgba(47,100,255,0.6)",
+    deckIds: [
+      "edgar","edgar","maya","maya","piggeh","piggeh",
+      "barrels","barrels","brofist","brofist","nine_yo_recruit","nine_yo_recruit",
+      "chair_review","floor_is_lava","jack_collab","stephano","tseries_ad_break","mr_chair","pewds_gym","minecraft_pickaxe",
+    ],
+  },
+  {
+    id: "mrbeast",
+    name: "MrBeast",
+    class: "Viral",
+    emoji: "🎯",
+    portrait: "/assets/heroes/mrbeast.png",
+    cardBack: "/assets/card-backs/mrbeast-back.png",
+    bio: "Philanthropy arc locked in. Subscribe or get squid-gamed, no cap.",
+    themeColor: "#2ecc71",
+    glowColor: "rgba(46,204,113,0.6)",
+    deckIds: [
+      "chandler","chandler","karl_jacobs","karl_jacobs","chris_tyson","chris_tyson",
+      "jimmy_himself","squid_rlgl","squid_rlgl","last_to_leave","hundred_days","philanthropy_arc",
+      "mrbeast_check","ten_k_giveaway","subscribe_spell","npc","ratio","touch_grass","streamer","influencer",
+    ],
+  },
 ];
 
 export const DECK_SIZE_TARGET = 35;
@@ -76,6 +141,89 @@ export const CLASS_CARDS = [
   { id:"x_rebrand",       name:"X Rebrand",         cost:2,              type:"spell",  desc:"Rename a minion 'X'. Give it +1/+1.",       emoji:"𝕏",  rarity:"rare",      effect:"x_rebrand", targetType:"minion", class:"Tech" },
   { id:"layoffs",         name:"Layoffs",           cost:4,              type:"spell",  desc:"Destroy ALL minions with 2 or less attack.",emoji:"📋", rarity:"epic",      effect:"layoffs", targetType:"none",   class:"Tech" },
   { id:"mars_colony",     name:"Mars Colony",       cost:7, atk:4, hp:10, type:"minion", desc:"Taunt. Elusive. It's on another planet.",  emoji:"🔴", rarity:"legendary", keywords:["taunt","elusive"],        class:"Tech" },
+
+  // ── Zuck / Tech class ──────────────────────────────────────────────────────
+  { id:"data_harvest",     name:"Data Harvest",          cost:2,              type:"spell",  desc:"Look at top 3 cards of enemy deck. Draw 1 card.",                                  emoji:"📡", rarity:"common",    effect:"peek_enemy_deck_3_draw1", targetType:"none",   flavor:"your data is not for sale. it is for lease.", class:"Tech" },
+  { id:"prism_protocol",   name:"Prism Protocol",        cost:3,              type:"spell",  desc:"Reveal enemy hand. Copy a random enemy card into your hand.",                       emoji:"🔺", rarity:"rare",      effect:"prism_protocol",          targetType:"none",   flavor:"we do not listen. we just happen to know.",   class:"Tech" },
+  { id:"lizard_form",      name:"Lizard Form",           cost:4, atk:3, hp:6, type:"minion", desc:"Elusive. Battlecry: Gain 3 Armor.",                                                 emoji:"🦎", rarity:"epic",      keywords:["elusive","battlecry","armor3"],                                        flavor:"he blinks sideways sometimes.",              class:"Tech" },
+  { id:"beyond_meat",      name:"Beyond Meat Sacrifice", cost:1,              type:"spell",  desc:"Destroy a friendly minion. Draw 2 cards.",                                          emoji:"🥩", rarity:"common",    effect:"sacrifice_draw2",         targetType:"minion_friendly", flavor:"plant based. soul free.",                    class:"Tech" },
+  { id:"hawaiian_compound",name:"Hawaiian Compound",     cost:5,              type:"spell",  desc:"Restore 10 HP. Gain 5 Armor. Draw a card.",                                         emoji:"🏝️", rarity:"epic",      effect:"hawaii_bunker",           targetType:"none",   flavor:"private island. private internet. private apocalypse.", class:"Tech" },
+  { id:"mma_cage_match",   name:"MMA Cage Match",        cost:6, atk:7, hp:7, type:"minion", desc:"Rush. The algorithm wants this fight.",                                             emoji:"🥋", rarity:"rare",      keywords:["rush"],                                                                flavor:"he trained for this. mostly on twitter.",     class:"Tech" },
+  { id:"algorithm_tweak",  name:"Algorithm Tweak",       cost:3,              type:"spell",  desc:"Enemy discards 2 random cards. Your next card costs (2) less.",                     emoji:"⚙️", rarity:"rare",      effect:"algo_tweak",              targetType:"none",   flavor:"small update. completely unrelated to everything. trust us.", class:"Tech" },
+  { id:"blue_checkmark",   name:"Verified Blue Check",   cost:2,              type:"spell",  desc:"Give a friendly minion Divine Shield and Stealth.",                                 emoji:"✅", rarity:"common",    effect:"grant_dshield_stealth",   targetType:"minion_friendly", flavor:"eight dollars of trust.",                     class:"Tech" },
+  { id:"shadow_ban",       name:"Shadow Ban",            cost:4,              type:"spell",  desc:"Silence an enemy minion. It cannot attack next turn.",                               emoji:"🌑", rarity:"rare",      effect:"silence_freeze",          targetType:"minion", flavor:"you're still posting. nobody is still watching.", class:"Tech" },
+  { id:"senate_hearing",   name:"Senate Hearing",        cost:4,              type:"spell",  desc:"Return an enemy minion to its owner's hand. It costs (3) more.",                    emoji:"🏛️", rarity:"epic",      effect:"bounce_cost_plus3",       targetType:"minion", flavor:"senator, we run ads.",                        class:"Tech" },
+  { id:"rayban_meta",      name:"Ray-Ban Meta Glasses",  cost:3, atk:2, hp:4, type:"minion", desc:"Battlecry: Permanently reveal 1 random card in enemy hand.",                        emoji:"🕶️", rarity:"epic",      keywords:["battlecry","reveal_enemy_card"],                                       flavor:"he sees you. that's the whole product.",      class:"Tech" },
+
+  // ── Tate / Viral class ─────────────────────────────────────────────────────
+  { id:"welcome_real_world", name:"Welcome to the Real World", cost:2,              type:"spell",  desc:"Draw 2 cards. Give them +1 Attack if they are Viral.",                              emoji:"🌍", rarity:"common",    effect:"welcome_real_world",     targetType:"none",   flavor:"step one. admit you were npc.",                          class:"Viral" },
+  { id:"real_world_uni",     name:"Real World University",     cost:4, atk:3, hp:5, type:"minion", desc:"Battlecry: Draw a Viral card. It costs (1) less.",                                  emoji:"🏛️", rarity:"rare",      keywords:["battlecry","draw_viral_discount1"],                                        flavor:"tuition paid in principles.",                            class:"Viral" },
+  { id:"escape_matrix",      name:"Escape The Matrix",         cost:5,              type:"spell",  desc:"Destroy an enemy minion. Disable enemy Ultimate for 2 turns.",                       emoji:"🕶️", rarity:"epic",      effect:"destroy_and_lock_ult2",  targetType:"minion", flavor:"red pill. no refunds.",                                  class:"Viral" },
+  { id:"hustlers_u",         name:"Hustlers University",       cost:3,              type:"spell",  desc:"Draw 3 Viral cards. They cost (1) less this turn.",                                  emoji:"🎓", rarity:"rare",      effect:"draw3_viral_discount1_turn", targetType:"none", flavor:"49 a month. results not guaranteed. mindset guaranteed.", class:"Viral" },
+  { id:"cold_plunge_4am",    name:"4AM Cold Plunge",           cost:2,              type:"spell",  desc:"Give a minion +3 HP and Taunt.",                                                     emoji:"🧊", rarity:"common",    effect:"buff_plus_taunt",        targetType:"minion_friendly", flavor:"pain is just weakness on vacation.",                     class:"Viral" },
+  { id:"top_g_mindset",      name:"Top G Mindset",             cost:4,              type:"spell",  desc:"Your hero gains 8 Armor. Your next spell costs (2) less.",                          emoji:"🧠", rarity:"rare",      effect:"armor8_next_spell_discount2", targetType:"none", flavor:"discipline is freedom. broke is a choice.",               class:"Viral" },
+  { id:"andrews_cigar",      name:"Andrew's Cigar",            cost:1,              type:"spell",  desc:"Deal 2 damage to any target. Draw a card.",                                          emoji:"🚬", rarity:"common",    effect:"damage2_draw1",          targetType:"any",    flavor:"fire starts conversations.",                             class:"Viral" },
+  { id:"red_pill",           name:"The Red Pill",              cost:3,              type:"spell",  desc:"Copy a random card from enemy hand into your hand.",                                 emoji:"💊", rarity:"rare",      effect:"copy_enemy_hand_card",   targetType:"none",   flavor:"see everything. become undefeated.",                     class:"Viral" },
+  { id:"sparring_cobratate", name:"Sparring Partner Cobratate",cost:4, atk:6, hp:4, type:"minion", desc:"Charge. Battlecry: deal 2 damage to your hero.",                                     emoji:"🥊", rarity:"epic",      keywords:["charge","battlecry","self_damage2"],                                       flavor:"practice bleeds so the match does not.",                  class:"Viral" },
+  { id:"romanian_compound",  name:"Romanian Compound",         cost:6,              type:"spell",  desc:"Gain +2 Aura this turn. Refresh your Ultimate charge.",                              emoji:"🏰", rarity:"legendary", effect:"refresh_ult_plus_aura2", targetType:"none",   flavor:"garage full. guest list shorter than the cigars.",       class:"Viral" },
+  { id:"marcell",            name:"Marcell",                   cost:5, atk:5, hp:5, type:"minion", desc:"Taunt. Battlecry: Summon two 1/1 Manly G Fans.",                                    emoji:"🕴️", rarity:"legendary", keywords:["taunt","battlecry","summon_fans2"],                                       flavor:"the brother you call before you call 911.",              class:"Viral" },
+  { id:"bailey_bolton",      name:"Bailey Bolton",             cost:4, atk:3, hp:5, type:"minion", desc:"Battlecry: Gain 3 Armor. Draw a Viral card.",                                       emoji:"🎯", rarity:"legendary", keywords:["battlecry","armor3","draw_viral"],                                         flavor:"real world coach. texts back instantly.",                 class:"Viral" },
+  { id:"luc",                name:"Luc",                       cost:3, atk:5, hp:2, type:"minion", desc:"Charge. Battlecry: deal 2 damage to any target.",                                   emoji:"👊", rarity:"legendary", keywords:["charge","battlecry","damage2_any"],                                        flavor:"the french one. still hits harder than you.",             class:"Viral" },
+  { id:"alex_tate",          name:"Alex",                      cost:4, atk:4, hp:4, type:"minion", desc:"Battlecry: Copy a random card from enemy hand.",                                    emoji:"🧠", rarity:"legendary", keywords:["battlecry","copy_enemy_card"],                                             flavor:"the professor. reads the matrix like manga.",             class:"Viral" },
+  { id:"smallex",            name:"Smallex",                   cost:2, atk:2, hp:3, type:"minion", desc:"Battlecry: Gain +1 Aura this turn only.",                                           emoji:"⚡", rarity:"legendary", keywords:["battlecry","plus1_aura_turn"],                                             flavor:"small but the electric bill is huge.",                    class:"Viral" },
+
+  // ── PewDiePie / Viral class ─────────────────────────────────────────────────
+  { id:"edgar",              name:"Edgar the Pug",             cost:1, atk:1, hp:2, type:"minion", desc:"Battlecry: Summon another 1/2 Edgar.",                                              emoji:"🐶", rarity:"rare",      keywords:["battlecry","summon_edgar"],                                               flavor:"EDGAR. no edgar.",                                       class:"Viral" },
+  { id:"maya",               name:"Maya the Shiba",            cost:1, atk:1, hp:1, type:"minion", desc:"Deathrattle: Summon a 1/1 Maya.",                                                   emoji:"🐕", rarity:"common",    keywords:["deathrattle","summon_maya"],                                               flavor:"good girl. immortal girl.",                              class:"Viral" },
+  { id:"piggeh",             name:"Piggeh",                    cost:2, atk:3, hp:2, type:"minion", desc:"Battlecry: Make an inappropriate joke. (+1 Attack to all friendly minions this turn.)", emoji:"🐷", rarity:"rare",      keywords:["battlecry","pump_all_atk1_turn"],                                          flavor:"he is coming out of the closet. literally.",             class:"Viral" },
+  { id:"barrels",            name:"BARRELS!!!",                cost:1,              type:"spell",  desc:"Deal 2 damage to a random enemy 3 times.",                                           emoji:"🛢️", rarity:"common",    effect:"barrels_3x2_random",     targetType:"none",   flavor:"the one and only enemy of this channel.",                class:"Viral" },
+  { id:"brofist",            name:"Brofist",                   cost:0,              type:"spell",  desc:"Give a friendly minion +2 Attack this turn.",                                        emoji:"👊", rarity:"common",    effect:"temp_atk2",              targetType:"minion_friendly", flavor:"as a token of our friendship.",                          class:"Viral" },
+  { id:"nine_yo_recruit",    name:"Nine Year Old Recruit",     cost:1, atk:2, hp:1, type:"minion", desc:"A basic Bro Army unit. Viral.",                                                      emoji:"🪖", rarity:"common",    keywords:[],                                                                          flavor:"subscribe or get stepped on.",                            class:"Viral" },
+  { id:"chair_review",       name:"Chair Review",              cost:2,              type:"spell",  desc:"Draw 2 cards.",                                                                      emoji:"🪑", rarity:"common",    effect:"draw2",                  targetType:"none",   flavor:"ten ten would sit again.",                               class:"Viral" },
+  { id:"floor_is_lava",      name:"Floor Is Lava",             cost:3,              type:"spell",  desc:"Deal 2 damage to all minions.",                                                      emoji:"🌋", rarity:"rare",      effect:"damage_all_minions_2",   targetType:"none",   flavor:"happy wheels flashbacks.",                               class:"Viral" },
+  { id:"jack_collab",        name:"Jack Septiceye Collab",     cost:4, atk:4, hp:4, type:"minion", desc:"Battlecry: If you control 3+ other minions, gain +2/+2.",                            emoji:"🟢", rarity:"epic",      keywords:["battlecry","collab_pump22"],                                               flavor:"top of the morning.",                                    class:"Viral" },
+  { id:"stephano",           name:"Stephano",                  cost:5, atk:4, hp:6, type:"minion", desc:"Your other minions have +1/+1.",                                                     emoji:"🐴", rarity:"legendary", keywords:["aura_other_friendly_plus11"],                                              flavor:"il est un cheval. il sait des choses.",                   class:"Viral" },
+  { id:"tseries_ad_break",   name:"T-Series Ad Break",         cost:3,              type:"spell",  desc:"Discard a random card from your hand. Draw 3 cards.",                                emoji:"📺", rarity:"rare",      effect:"discard_self_draw3",     targetType:"none",   flavor:"unskippable. unforgivable.",                             class:"Viral" },
+  { id:"mr_chair",           name:"Mr. Chair",                 cost:2, atk:2, hp:4, type:"minion", desc:"Taunt. A loyal piece of furniture.",                                                 emoji:"🪑", rarity:"rare",      keywords:["taunt"],                                                                   flavor:"he has been through things with you.",                    class:"Viral" },
+  { id:"pewds_gym",          name:"Pewds Gym Arc",             cost:3,              type:"spell",  desc:"Give all friendly minions +1/+1.",                                                   emoji:"💪", rarity:"rare",      effect:"pump_all_11",            targetType:"none",   flavor:"the meat arc.",                                          class:"Viral" },
+  { id:"minecraft_pickaxe",  name:"Diamond Pickaxe",           cost:2,              type:"spell",  desc:"Give a friendly minion +3 Attack.",                                                  emoji:"⛏️", rarity:"common",    effect:"temp_atk3_permanent",    targetType:"minion_friendly", flavor:"finally, diamond.",                                     class:"Viral" },
+
+  // ── MrBeast / Viral class ───────────────────────────────────────────────────
+  { id:"chandler",           name:"Chandler",                  cost:3, atk:2, hp:4, type:"minion", desc:"Battlecry: Summon another 2/4 Chandler.",                                            emoji:"🧑‍🍳", rarity:"rare",      keywords:["battlecry","summon_chandler"],                                             flavor:"certified dishwasher arc fr.",                            class:"Viral" },
+  { id:"karl_jacobs",        name:"Karl Jacobs",               cost:4, atk:3, hp:5, type:"minion", desc:"Battlecry: Draw 2 cards.",                                                           emoji:"🧢", rarity:"rare",      keywords:["battlecry","draw2"],                                                      flavor:"karl-like behavior. unreal.",                             class:"Viral" },
+  { id:"chris_tyson",        name:"Chris Tyson",               cost:3, atk:3, hp:4, type:"minion", desc:"Taunt. Battlecry: Gain 3 Armor.",                                                    emoji:"💇", rarity:"epic",      keywords:["taunt","battlecry","armor3"],                                              flavor:"serving looks AND tanking hits bestie.",                  class:"Viral" },
+  { id:"jimmy_himself",      name:"Jimmy Himself",             cost:7, atk:7, hp:7, type:"minion", desc:"Battlecry: Gain 20 Armor and draw 2 cards.",                                         emoji:"🎯", rarity:"legendary", keywords:["battlecry","mrbeast_boss"],                                                flavor:"subscribe or it's a flop. literally.",                    class:"Viral" },
+  { id:"squid_rlgl",         name:"Red Light Green Light",     cost:4,              type:"spell",  desc:"Destroy ALL minions with 4 or less Attack.",                                         emoji:"🚦", rarity:"rare",      effect:"squid_rlgl",             targetType:"none",   flavor:"move and ur OUT OUT.",                                    class:"Viral" },
+  { id:"last_to_leave",      name:"Last To Leave The Circle",  cost:5,              type:"spell",  desc:"Destroy the weakest enemy minion. Give a friendly minion +5/+5.",                    emoji:"⭕", rarity:"epic",      effect:"last_to_leave",          targetType:"minion_friendly", flavor:"one wins. everyone else touches grass.",                 class:"Viral" },
+  { id:"hundred_days",       name:"100 Days Stranded",         cost:6,              type:"spell",  desc:"Restore 20 HP. Draw 3 cards.",                                                       emoji:"🏝️", rarity:"epic",      effect:"hundred_days",           targetType:"none",   flavor:"survival arc officially unlocked.",                       class:"Viral" },
+  { id:"philanthropy_arc",   name:"Philanthropy Arc",          cost:7,              type:"spell",  desc:"Summon a 10/10 Giant Check with Taunt. Restore 10 HP.",                              emoji:"💸", rarity:"legendary", effect:"philanthropy_arc",       targetType:"none",   flavor:"doing what we can, king behavior.",                       class:"Viral" },
+  { id:"mrbeast_check",      name:"The MrBeast Check",         cost:1,              type:"spell",  desc:"Gain 5 Armor. Draw a card.",                                                         emoji:"🪧", rarity:"common",    effect:"mrbeast_check",          targetType:"none",   flavor:"just wrote down a number. a BIG number.",                 class:"Viral" },
+  { id:"ten_k_giveaway",     name:"$10,000 Giveaway",          cost:3,              type:"spell",  desc:"Gain 10 Armor. Draw 2 cards.",                                                       emoji:"💰", rarity:"rare",      effect:"ten_k_giveaway",         targetType:"none",   flavor:"chat reward fr fr. drop the tag.",                        class:"Viral" },
+  { id:"subscribe_spell",    name:"Subscribe!",                cost:2,              type:"spell",  desc:"Copy a random card from enemy deck into your hand.",                                 emoji:"🔔", rarity:"rare",      effect:"subscribe_spell",        targetType:"none",   flavor:"notifications on. ratio'd into the algorithm.",           class:"Viral" },
+  { id:"nolan",              name:"Nolan",                     cost:2, atk:2, hp:3, type:"minion", desc:"Battlecry: Summon a 1/1 Subscribe Counter.",                                         emoji:"🎬", rarity:"common",    keywords:["battlecry","summon_sub_counter"],                                          flavor:"new guy energy. locked in though.",                       class:"Viral" },
+
+  // ── Generated / summoned tokens (not drafted directly) ─────────────────────
+  { id:"fan_token_tate",     name:"Manly G Fan",               cost:1, atk:1, hp:1, type:"minion", desc:"Viral. A Fan of the Top G.",                                                         emoji:"💪", rarity:"common",    keywords:[],                                                                          flavor:"one of the bros.",                                       class:"Viral", token:true },
+  { id:"fan_token_pewds",    name:"Bro Army Fan",              cost:1, atk:1, hp:1, type:"minion", desc:"Viral. 9-year-old army reporting.",                                                  emoji:"🪖", rarity:"common",    keywords:[],                                                                          flavor:"subscribed. notifications on.",                          class:"Viral", token:true },
+  { id:"war_room_member",    name:"War Room Member",           cost:8, atk:8, hp:8, type:"minion", desc:"Charge. Viral. Top G Protocol cohort.",                                              emoji:"🕴️", rarity:"legendary", keywords:["charge"],                                                                  flavor:"eyes up. phone down. grind on.",                          class:"Viral", token:true },
+  { id:"nine_yo_army",       name:"9yo Army Member",           cost:2, atk:2, hp:2, type:"minion", desc:"Charge. Viral. For the Bros.",                                                       emoji:"🪖", rarity:"common",    keywords:["charge"],                                                                  flavor:"drafted at recess.",                                     class:"Viral", token:true },
+  { id:"tseries_tower",      name:"T-Series Content Tower",    cost:8, atk:2, hp:40,type:"minion", desc:"Taunt. Elusive. The algorithm blessed this one.",                                    emoji:"🗼", rarity:"legendary", keywords:["taunt","elusive"],                                                         flavor:"it keeps uploading.",                                    class:"Viral", token:true },
+  { id:"bitch_lasagna",      name:"Bitch Lasagna",             cost:5,              type:"spell",  desc:"Deal 8 damage to all enemies. Draw 6. Restore 30 HP. Summon a 2/40 T-Series with Taunt+Elusive FOR OPPONENT.", emoji:"🍝", rarity:"legendary", effect:"bitch_lasagna",          targetType:"none",   flavor:"t-series ain't nothing but a",                            class:"Viral", token:true },
+  { id:"security_team",      name:"A-Level Security Team",     cost:4, atk:4, hp:8, type:"minion", desc:"Taunt. Cannot attack enemy hero.",                                                   emoji:"🕶️", rarity:"rare",      keywords:["taunt","cant_attack_hero"],                                                flavor:"sorry sir, you're not on the list.",                     class:"Viral", token:true },
+  { id:"avatar_2x2",         name:"Metaverse Avatar",          cost:2, atk:2, hp:2, type:"minion", desc:"Cannot attack heroes. Very low-poly.",                                               emoji:"👤", rarity:"common",    keywords:["cant_attack_hero"],                                                        flavor:"the eyes were the hard part.",                           class:"Tech", token:true },
+
+  // ── MrBeast / ult tokens ────────────────────────────────────────────────────
+  { id:"contestant",         name:"Contestant",                cost:3, atk:3, hp:3, type:"minion", desc:"A Squid Game Charity contestant. Only one survives.",                                 emoji:"🎮", rarity:"common",    keywords:[],                                                                          flavor:"number pinned. fate unpinned.",                          class:"Viral", token:true },
+  { id:"survivor",           name:"Survivor",                  cost:3, atk:13, hp:13, type:"minion", desc:"Charge. The last one standing. Winner winner.",                                     emoji:"🏆", rarity:"legendary", keywords:["charge"],                                                                  flavor:"456 billion dollars vibes.",                              class:"Viral", token:true },
+  { id:"giant_check",        name:"Giant Check",               cost:7, atk:10, hp:10, type:"minion", desc:"Taunt. Philanthropy incarnate.",                                                   emoji:"💵", rarity:"legendary", keywords:["taunt"],                                                                   flavor:"amount: ridiculous. memo: subscribe.",                    class:"Viral", token:true },
+  { id:"sub_counter",        name:"Subscribe Counter",         cost:1, atk:1, hp:1, type:"minion", desc:"Viral. Going up only.",                                                              emoji:"📈", rarity:"common",    keywords:[],                                                                          flavor:"plus one. plus one. plus one.",                           class:"Viral", token:true },
+  { id:"chandler_token",     name:"Chandler",                  cost:3, atk:2, hp:4, type:"minion", desc:"Chandler clone. No battlecry.",                                                      emoji:"🧑‍🍳", rarity:"rare",      keywords:[],                                                                          flavor:"dishes still dirty but he tried.",                        class:"Viral", token:true },
+  { id:"beast_games",        name:"Beast Games",               cost:10,             type:"spell",  desc:"Cast twice to trigger. Restart the match: each hero starts with 10 mana, 9-card hand, 5-card deck, no Ultimate charges.", emoji:"🎪", rarity:"legendary", effect:"beast_games",            targetType:"none",   flavor:"season finale. reset the board bro.",                    class:"Viral", token:true },
+
+  // ── Tate Discover-3 options (ult picks) ─────────────────────────────────────
+  { id:"cigar_night",        name:"Cigar Night",               cost:10,             type:"spell",  desc:"Your hero takes 10 damage. Give all friendly minions +8/+8. Draw a card.",            emoji:"🚬", rarity:"legendary", effect:"cigar_night",            targetType:"none",   flavor:"the smoke clears… only alphas remain.",                  class:"Viral", token:true },
+  { id:"bugatti_chiron",     name:"Bugatti Chiron Pur Sport",  cost:8, atk:8, hp:10,type:"minion", desc:"Charge. Battlecry: All your minions have Charge this turn.",                         emoji:"🏎️", rarity:"legendary", keywords:["charge","battlecry","grant_charge_all_turn"],                              flavor:"what color is your bugatti?...",                          class:"Viral", token:true },
+  { id:"security_team_spell",name:"A-Level Celebrity Security",cost:6,              type:"spell",  desc:"Gain 10 Armor. Summon four 4/8 Security Team with Taunt. (Cannot attack enemy hero.)", emoji:"🕶️", rarity:"legendary", effect:"celebrity_security",     targetType:"none",   flavor:"sir, the red carpet. and the body bag. both rolled out.", class:"Viral", token:true },
 ];
 
 // ── CARD DATA ────────────────────────────────────────────────────────────────
@@ -256,9 +404,79 @@ function normalizeCardSchema(card) {
   };
 }
 
+// ── localStorage persistence keys ────────────────────────────────────────────
+const LS_CUSTOM_CARDS = "co_customCards";
+const LS_CARD_OVERRIDES = "co_cardOverrides";
+const LS_DELETED_IDS = "co_deletedIds";
+const LS_HERO_DECK_PREFIX = "co_heroDeck:"; // per-hero: co_heroDeck:<heroId> → JSON array of card ids
+
+function loadPersisted() {
+  try {
+    const raw = localStorage.getItem(LS_CUSTOM_CARDS);
+    if (raw) CUSTOM_CARDS = JSON.parse(raw);
+  } catch {}
+  try {
+    const raw = localStorage.getItem(LS_CARD_OVERRIDES);
+    if (raw) LIBRARY_CARD_OVERRIDES = JSON.parse(raw);
+  } catch {}
+  try {
+    const raw = localStorage.getItem(LS_DELETED_IDS);
+    if (raw) LIBRARY_DELETED_IDS = new Set(JSON.parse(raw));
+  } catch {}
+}
+
+function persistAll() {
+  try {
+    localStorage.setItem(LS_CUSTOM_CARDS, JSON.stringify(CUSTOM_CARDS));
+    localStorage.setItem(LS_CARD_OVERRIDES, JSON.stringify(LIBRARY_CARD_OVERRIDES));
+    localStorage.setItem(LS_DELETED_IDS, JSON.stringify([...LIBRARY_DELETED_IDS]));
+  } catch {}
+}
+
+export function getHeroDeckIds(heroId) {
+  if (!heroId) return [];
+  try {
+    const raw = localStorage.getItem(`${LS_HERO_DECK_PREFIX}${heroId}`);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length) return parsed;
+    }
+  } catch {}
+  const hero = HEROES.find(h => h.id === heroId);
+  return hero?.deckIds ? [...hero.deckIds] : [];
+}
+
+export function setHeroDeckIds(heroId, ids) {
+  if (!heroId) return;
+  try { localStorage.setItem(`${LS_HERO_DECK_PREFIX}${heroId}`, JSON.stringify(ids)); } catch {}
+}
+
+export function resetHeroDeckIds(heroId) {
+  if (!heroId) return;
+  try { localStorage.removeItem(`${LS_HERO_DECK_PREFIX}${heroId}`); } catch {}
+}
+
+export function getHeroPortraitOverride(heroId) {
+  if (!heroId) return null;
+  try { return localStorage.getItem(`heroPortrait:${heroId}`) || null; } catch { return null; }
+}
+
+export function setHeroPortraitOverride(heroId, dataUrl) {
+  if (!heroId) return;
+  try { localStorage.setItem(`heroPortrait:${heroId}`, dataUrl); } catch {}
+}
+
+export function resetHeroPortraitOverride(heroId) {
+  if (!heroId) return;
+  try { localStorage.removeItem(`heroPortrait:${heroId}`); } catch {}
+}
+
 export let CUSTOM_CARDS = [];
 export let LIBRARY_CARD_OVERRIDES = {};
 export let LIBRARY_DELETED_IDS = new Set();
+
+// Load on module init
+loadPersisted();
 
 function withLibraryOverrides(card) {
   if (LIBRARY_DELETED_IDS.has(card.id)) return null;
@@ -275,10 +493,12 @@ export function getLib() {
 }
 export function addCustomCard(card) {
   CUSTOM_CARDS = [...CUSTOM_CARDS, card];
+  persistAll();
   return CUSTOM_CARDS;
 }
 export function removeCustomCard(id) {
   CUSTOM_CARDS = CUSTOM_CARDS.filter(card => card.id !== id);
+  persistAll();
   return CUSTOM_CARDS;
 }
 export function getCustomCards() {
@@ -286,6 +506,7 @@ export function getCustomCards() {
 }
 export function upsertCustomCard(card) {
   CUSTOM_CARDS = [...CUSTOM_CARDS.filter(c => c.id !== card.id), card];
+  persistAll();
   return CUSTOM_CARDS;
 }
 
@@ -297,6 +518,7 @@ export function upsertLibraryCard(card) {
     LIBRARY_CARD_OVERRIDES = { ...LIBRARY_CARD_OVERRIDES, [card.id]: card };
   }
   LIBRARY_DELETED_IDS.delete(card.id);
+  persistAll();
   return getLib();
 }
 
@@ -309,6 +531,15 @@ export function deleteLibraryCard(id) {
     next.add(id);
     LIBRARY_DELETED_IDS = next;
   }
+  persistAll();
+  return getLib();
+}
+
+export function resetAllCardEdits() {
+  CUSTOM_CARDS = [];
+  LIBRARY_CARD_OVERRIDES = {};
+  LIBRARY_DELETED_IDS = new Set();
+  persistAll();
   return getLib();
 }
 

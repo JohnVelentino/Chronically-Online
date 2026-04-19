@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
-import { getLib, RC, HEROES } from "./data/cards.js";
+import { getLib, RC, HEROES, getHeroDeckIds } from "./data/cards.js";
 import { getSFX } from "./audio/sfx.js";
 import { drawCard, initPlayer, makeDeckFrom, mkUid, mulliganHand } from "./engine/gameState.js";
-import { applySpell, doAttack, playBattlecry, createMinionEntity, damageHero, destroyAllMinions, resolveEndOfTurn, revealHand, startTurn, stealCardFromHandByUid, takeControlOfMinion } from "./engine/combat.js";
+import { applySpell, applyZuckUltimate, doAttack, playBattlecry, createMinionEntity, damageHero, destroyAllMinions, resolveEndOfTurn, revealHand, startTurn, stealCardFromHandByUid, takeControlOfMinion } from "./engine/combat.js";
 import { runAiTurnSteps } from "./engine/ai.js";
 import ArrowOverlay from "./components/ArrowOverlay.jsx";
 import BoardMinion from "./components/BoardMinion.jsx";
@@ -20,14 +20,16 @@ import TemplateCardFace from "./components/TemplateCardFace.jsx";
 import UltimateTooltip from "./components/UltimateTooltip.jsx";
 import useDevConfig from "./dev/useDevConfig.js";
 
+const CANVAS_W = 1600;
+const CANVAS_H = 900;
 const ATTACK_IMPACT_DELAY_MS = 260;
 const ATTACK_CLEANUP_BUFFER_MS = 140;
 const ENEMY_REVEAL_DURATION_MS = 2500;
 const ATTACK_VISUAL_HOLD_MS = 500;
 const REVEAL_CARD_WIDTH_PX = 248;
 const REVEAL_CARD_HEIGHT_PX = 352;
-const LEFT_REVEAL_TOP_PX = 320;
-const LEFT_REVEAL_LEFT_PX = 360;
+const LEFT_REVEAL_TOP_PX = 180;
+const LEFT_REVEAL_LEFT_PX = 480;
 const UI_SMOOTH_TRANSITION_MS = 180;
 const BOARD_ZONE_MIN_H_PX = 262;
 const BOARD_ZONE_GAP_PX = 14;
@@ -36,27 +38,19 @@ const BOARD_STAGE_SHIFT_UP_PX = 20;
 const ULTIMATE_USE_MAX = 2;
 const HERO_PORTRAIT_STORAGE_PREFIX = "heroPortrait:";
 
-const BOARD_CARD_MIN_W = 88;
-const BOARD_CARD_MAX_W = 132;
+const BOARD_CARD_MIN_W = 80;
+const BOARD_CARD_MAX_W = 126;
 const BOARD_CARD_ASPECT = 176 / 132;
 const BOARD_SIDE_PAD_PX = 24;
-const BOARD_CARD_GAP_PX = 10;
+const BOARD_CARD_GAP_PX = 14;
 
 function computeBoardCardSize(count, zoneWidth) {
   if (count <= 0) return { w: BOARD_CARD_MAX_W, h: Math.round(BOARD_CARD_MAX_W * BOARD_CARD_ASPECT) };
   const available = Math.max(0, zoneWidth - BOARD_SIDE_PAD_PX * 2);
-  const raw = (available / count) - BOARD_CARD_GAP_PX;
+  // N cards need N-1 gaps
+  const raw = (available - BOARD_CARD_GAP_PX * (count - 1)) / count;
   const w = Math.max(BOARD_CARD_MIN_W, Math.min(BOARD_CARD_MAX_W, Math.floor(raw)));
   return { w, h: Math.round(w * BOARD_CARD_ASPECT) };
-}
-
-function readDevSettings() {
-  let playerPortrait = null, enemyPortrait = null;
-  try {
-    playerPortrait = localStorage.getItem("devHeroPortrait_player") || null;
-    enemyPortrait  = localStorage.getItem("devHeroPortrait_enemy")  || null;
-  } catch {}
-  return { playerPortrait, enemyPortrait };
 }
 
 function getHeroPortraitFromStorage(hero) {
@@ -69,34 +63,8 @@ function getHeroPortraitFromStorage(hero) {
   }
 }
 
-function getUltimateMeta(hero) {
-  const heroId = typeof hero === "string" ? hero : hero?.id;
-  if (heroId === "trump") return {
-    id: "trump",
-    name: "The Japan Special",
-    cost: 0,
-    emoji: "🇯🇵",
-    themeColor: "#cc2222",
-    desc: "Deal 8 damage to all enemies and summon 2× The Wall.",
-  };
-  if (heroId === "cia") return {
-    id: "cia",
-    name: "Deep State Download",
-    cost: 0,
-    emoji: "🛰️",
-    themeColor: "#6dc6d6",
-    desc: "Take control of up to 2 enemy minions and steal 1 card from their hand.",
-  };
-  if (heroId === "elon") return {
-    id: "elon",
-    name: "Future Tech",
-    cost: 0,
-    emoji: "🚀",
-    themeColor: "#00e6c8",
-    desc: "Summon a 8/8, a 4/12 Taunt, a 2/6 Taunt and a 2/8 Space Army. +5 Aura this turn, +10 Armor forever.",
-  };
-  return { id: "generic", name: "Ultimate", cost: 0, emoji: "⚡", themeColor: "#ffcc33", desc: "A powerful hero-specific ability." };
-}
+import { getUltimateMeta } from "./data/ultimates.js";
+export { getUltimateMeta };
 
 function getUnlockedUltimateCharges(maxMana) {
   let unlocked = 0;
@@ -123,7 +91,7 @@ export default function App() {
   const [aiActionHighlight, setAiActionHighlight] = useState(false);
   const [aiPlayOverlay, setAiPlayOverlay] = useState(null);
   const [aiActions, setAiActions] = useState([]);
-  const [aiPlayHistory, setAiPlayHistory] = useState([]);   // all cards enemy played this game
+  const [gameHistory, setGameHistory] = useState([]);       // unified play-history for both sides (cards + ultimates)
   const [hoveredHistoryCard, setHoveredHistoryCard] = useState(null);
   const [flyingCard, setFlyingCard] = useState(null);        // { card, id } — the flying-to-panel animation
   const aiStepTimers = useRef([]);
@@ -140,8 +108,10 @@ export default function App() {
   const [matchFadeActive, setMatchFadeActive] = useState(false);
   const [matchFadeOpaque, setMatchFadeOpaque] = useState(false);
   const [isOverPlayZone, setIsOverPlayZone] = useState(false);
-  const [devSettings, setDevSettings] = useState(readDevSettings);
   const [ciaUltSelection, setCiaUltSelection] = useState(null);
+  const [tateDiscoverChoice, setTateDiscoverChoice] = useState(null);
+  const [ultBurstKey, setUltBurstKey] = useState(null);
+  const prevUltCanUseRef = useRef(false);
   const devConfig = useDevConfig();
   const prevBoardUids = useRef({ player: [], ai: [] });
 
@@ -168,6 +138,7 @@ export default function App() {
   const [ultHover, setUltHover] = useState(false);
   const ultBtnRef = useRef(null);
   const pointerRafRef = useRef(null);
+  const [canvasScale, setCanvasScale] = useState(1);
 
   function getMinionRef(uid) {
     if (!minionRefs.current[uid]) minionRefs.current[uid] = { current: null };
@@ -176,6 +147,11 @@ export default function App() {
 
   function pushLog(e) {
     setLog(p => [...p.slice(-50), ...e]);
+  }
+
+  function pushHistory({ card, side, kind, summary }) {
+    const hid = mkUid();
+    setGameHistory(prev => [...prev, { ...card, _hid: hid, _side: side, _kind: kind, _summary: summary }]);
   }
 
   function toast(m) {
@@ -200,18 +176,45 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const update = () => setCanvasScale(Math.min(window.innerWidth / CANVAS_W, window.innerHeight / CANVAS_H));
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+
+  useEffect(() => {
     const lockScroll = phase !== "hero_select" && phase !== "menu";
     const prevHtmlOverflow = document.documentElement.style.overflow;
     const prevBodyOverflow = document.body.style.overflow;
     if (lockScroll) {
       document.documentElement.style.overflow = "hidden";
       document.body.style.overflow = "hidden";
+      // Auto-fullscreen on game start
+      if (document.documentElement.requestFullscreen && !document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      }
     }
     return () => {
       document.documentElement.style.overflow = prevHtmlOverflow;
       document.body.style.overflow = prevBodyOverflow;
     };
   }, [phase]);
+
+  // F11 listener for manual fullscreen toggle
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "F11") {
+        e.preventDefault();
+        if (document.fullscreenElement) {
+          document.exitFullscreen().catch(() => {});
+        } else {
+          document.documentElement.requestFullscreen().catch(() => {});
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   useEffect(() => {
     function measure() {
@@ -364,8 +367,22 @@ export default function App() {
     setGs(ng);
   }
 
+  function pickTateDiscover(card) {
+    if (!gs || !tateDiscoverChoice || !card) return;
+    getSFX().cardSelect();
+    let ng = gs;
+    if (ng.player.hand.length < 10) {
+      ng = { ...ng, player: { ...ng.player, hand: [...ng.player.hand, { ...card, uid: mkUid() }] } };
+      pushLog([`👊 Chose ${card.name}!`, "Top G knows what he wants."]);
+    } else {
+      pushLog(["Hand full.", `${card.name} couldn't be added.`]);
+    }
+    setTateDiscoverChoice(null);
+    setGs(ng);
+  }
+
   function startGame(hero) {
-    const heroDeck = hero ? makeDeckFrom(hero.deckIds) : (activeDeck?.cardIds?.length ? makeDeckFrom(activeDeck.cardIds) : null);
+    const heroDeck = hero ? makeDeckFrom(getHeroDeckIds(hero.id)) : (activeDeck?.cardIds?.length ? makeDeckFrom(activeDeck.cardIds) : null);
     const heroName = hero ? hero.name : "You";
     const heroEmoji = hero ? hero.emoji : "🧙";
     const heroPortrait = getHeroPortraitFromStorage(hero);
@@ -374,7 +391,7 @@ export default function App() {
     // Pick a random AI hero (different from player if possible)
     const aiHeroCandidates = HEROES.filter(h => !hero || h.id !== hero.id);
     const aiHero = aiHeroCandidates[Math.floor(Math.random() * aiHeroCandidates.length)] || HEROES[0];
-    const aiDeck = makeDeckFrom(aiHero.deckIds);
+    const aiDeck = makeDeckFrom(getHeroDeckIds(aiHero.id));
     setGs({
       player: { ...initPlayer(heroName, false, heroDeck), heroId: hero?.id || null, maxMana: 1, mana: 1, armor: 0, ultimateUses: 0, ultimateUsedThisTurn: false, emoji: heroEmoji, portrait: heroPortrait, cardBack: heroCardBack },
       ai: { ...initPlayer(aiHero.name, true, aiDeck), heroId: aiHero.id, maxMana: 0, mana: 0, armor: 0, ultimateUses: 0, ultimateUsedThisTurn: false, portrait: getHeroPortraitFromStorage(aiHero), cardBack: aiHero.cardBack || null, emoji: aiHero.emoji },
@@ -387,7 +404,7 @@ export default function App() {
     setSelAtk(null);
     setTgtSpell(null);
     setHovTarget(null);
-    setAiPlayHistory([]);
+    setGameHistory([]);
     setHoveredHistoryCard(null);
     setFlyingCard(null);
     setIsOverPlayZone(false);
@@ -452,12 +469,22 @@ export default function App() {
   }, [gs]);
 
   function castSpell(card, targetId) {
+    // Pre-check: elusive enemy minion can't be spell-targeted. Reject before consuming card/mana.
+    if (targetId && typeof targetId === "string" && targetId !== "hero" && !targetId.startsWith("hero_")) {
+      const enemyMinion = gs.ai.board.find(m => m.uid === targetId);
+      if (enemyMinion && (enemyMinion.keywords?.includes("elusive") || enemyMinion.keywords?.includes("stealth"))) {
+        getSFX().error();
+        toast("Elusive! Can't target with spells.");
+        return;
+      }
+    }
     getSFX().spellCast();
     const nh = gs.player.hand.filter(c => c.uid !== card.uid);
     let ng = { ...gs, player: { ...gs.player, hand: nh, mana: gs.player.mana - card.cost } };
     const r = applySpell(card.effectId || card.effect, targetId, ng, "player", card);
     ng = r.gs;
     pushLog(["✨ " + card.name + "!", ...r.log]);
+    pushHistory({ card, side: "player", kind: "cast", summary: `You cast ${card.name}` });
     showSpotlight(card, "player");
     const w = checkWin(ng);
     if (w) {
@@ -527,6 +554,7 @@ export default function App() {
     const r = playBattlecry(minion, ng, "player");
     ng = r.gs;
     pushLog(["🃏 " + card.name + " enters!", ...r.log]);
+    pushHistory({ card, side: "player", kind: "play", summary: `You played ${card.name}` });
     showSpotlight(minion, "player");
     setGs(ng);
     setSelCard(null);
@@ -696,6 +724,7 @@ export default function App() {
       return;
     }
 
+    getSFX().ultimate();
     const meta = getUltimateMeta({ id: player.heroId });
     let ng = gs;
 
@@ -766,6 +795,91 @@ export default function App() {
         },
       });
       pushLog(["⚙️ Future Tech!", "+5 Aura, +10 Armor, and 4 elite units deployed."]);
+    } else if (meta.id === "tate") {
+      const lib = getLib();
+      const warRoom = { id: "war_room_member", name: "War Room Member", type: "minion", cost: 8, rarity: "legendary", class: "Viral", atk: 8, hp: 8, emoji: "🕴️", keywords: ["charge"], desc: "Charge. War Room." };
+      for (let i = 0; i < 3; i++) {
+        if (ng.player.board.length >= 7) break;
+        ng = { ...ng, player: { ...ng.player, board: [...ng.player.board, createMinionEntity(warRoom)] } };
+      }
+      const discoverIds = ["cigar_night", "bugatti_chiron", "security_team_spell"];
+      const discoverCards = discoverIds.map(id => lib.find(c => c.id === id)).filter(Boolean);
+      pushLog(["👊 Top G Protocol!", "3 War Room Members summoned. Choose your weapon..."]);
+      ng = {
+        ...ng,
+        player: {
+          ...ng.player,
+          ultimateUses: (ng.player.ultimateUses || 0) + 1,
+          ultimateUsedThisTurn: true,
+        },
+      };
+      pushHistory({
+        card: { id: `player_ult_${meta.id}`, name: meta.name, emoji: meta.emoji || "⚡", type: "spell", rarity: "legendary", cost: 0, desc: meta.desc },
+        side: "player",
+        kind: "ultimate",
+        summary: `You unleashed ${meta.name}`,
+      });
+      setGs(ng);
+      setTateDiscoverChoice({ cards: discoverCards });
+      return;
+    } else if (meta.id === "pewdiepie") {
+      const stealCount = Math.min(10, ng.ai.deck.length);
+      const stolen = [];
+      for (let i = 0; i < stealCount; i++) {
+        if (!ng.ai.deck.length) break;
+        const idx = Math.floor(Math.random() * ng.ai.deck.length);
+        const card = ng.ai.deck[idx];
+        stolen.push({ ...card, uid: mkUid() });
+        ng = { ...ng, ai: { ...ng.ai, deck: ng.ai.deck.filter((_, i2) => i2 !== idx) } };
+      }
+      ng = { ...ng, player: { ...ng.player, deck: [...ng.player.deck, ...stolen] } };
+      const army = { id: "nine_yo_army", name: "9yo Army Member", type: "minion", cost: 2, rarity: "common", class: "Viral", atk: 2, hp: 2, emoji: "🪖", keywords: ["charge"], desc: "Charge. For the Bros." };
+      for (let i = 0; i < 6; i++) {
+        if (ng.player.board.length >= 7) break;
+        ng = { ...ng, player: { ...ng.player, board: [...ng.player.board, createMinionEntity(army)] } };
+      }
+      const lib = getLib();
+      const lasagna = lib.find(c => c.id === "bitch_lasagna");
+      if (lasagna && ng.player.hand.length < 10) {
+        ng = { ...ng, player: { ...ng.player, hand: [...ng.player.hand, { ...lasagna, uid: mkUid() }] } };
+      }
+      pushLog(["🎮 MEME REVIEW!", `Stole ${stealCount} cards. 6 Bros summoned. Bitch Lasagna added.`]);
+    } else if (meta.id === "zuck") {
+      const cloneCount = Math.min(ng.ai.board.length, Math.max(0, 7 - ng.player.board.length));
+      ng = applyZuckUltimate(ng, "player");
+      pushLog(["🤖 THE ZUCK!", `Copied ${cloneCount} enemy minion(s). Their cards +1 next turn. Your hand −1 permanently.`]);
+    } else if (meta.id === "mrbeast") {
+      ng = destroyAllMinions(ng, "player");
+      const contestant = { id: "contestant", name: "Contestant", type: "minion", cost: 3, rarity: "common", class: "Viral", atk: 3, hp: 3, emoji: "🎮", keywords: [], desc: "A Squid Game contestant." };
+      for (let i = 0; i < 4; i++) {
+        if (ng.player.board.length >= 7) break;
+        ng = { ...ng, player: { ...ng.player, board: [...ng.player.board, createMinionEntity(contestant)] } };
+      }
+      for (let i = 0; i < 3; i++) {
+        if (ng.ai.board.length >= 7) break;
+        ng = { ...ng, ai: { ...ng.ai, board: [...ng.ai.board, createMinionEntity(contestant)] } };
+      }
+      if (ng.player.board.length > 0) {
+        const survivorIdx = Math.floor(Math.random() * ng.player.board.length);
+        ng = {
+          ...ng,
+          player: {
+            ...ng.player,
+            board: ng.player.board.map((m, i) => i === survivorIdx ? createMinionEntity({ ...m, id: "survivor", name: "Survivor", atk: m.atk + 10, hp: m.hp + 10, maxHp: (m.maxHp ?? m.hp) + 10, emoji: "🏆", rarity: "legendary", keywords: ["charge"], desc: "Charge. The last one standing." }) : m),
+          },
+        };
+      }
+      ng = {
+        ...ng,
+        player: { ...ng.player, armor: (ng.player.armor || 0) + 20, mana: Math.min(10, (ng.player.mana || 0) + 5), tempAuraBonus: (ng.player.tempAuraBonus || 0) + 5 },
+        ai: { ...ng.ai, armor: (ng.ai.armor || 0) + 20 },
+      };
+      const lib = getLib();
+      const beastGames = lib.find(c => c.id === "beast_games");
+      if (beastGames && ng.player.hand.length < 10) {
+        ng = { ...ng, player: { ...ng.player, hand: [...ng.player.hand, { ...beastGames, uid: mkUid() }] } };
+      }
+      pushLog(["🎯 SQUID GAME CHARITY!", "Board wiped. 7 Contestants in arena. Survivor crowned. +20 Armor both heroes."]);
     } else {
       toast("This hero has no ultimate configured.");
       return;
@@ -780,6 +894,21 @@ export default function App() {
       },
     };
 
+    pushHistory({
+      card: {
+        id: `player_ult_${meta.id}`,
+        name: meta.name,
+        emoji: meta.emoji || "⚡",
+        type: "spell",
+        rarity: "legendary",
+        cost: 0,
+        desc: meta.desc,
+      },
+      side: "player",
+      kind: "ultimate",
+      summary: `You unleashed ${meta.name}`,
+    });
+
     const w = checkWin(ng);
     if (w) {
       setWinner(w);
@@ -790,7 +919,7 @@ export default function App() {
   }
 
   function endTurn() {
-    if (phase !== "player_turn" || ciaUltSelection) return;
+    if (phase !== "player_turn" || ciaUltSelection || tateDiscoverChoice) return;
     getSFX().endTurn();
     setSelCard(null); setSelAtk(null); setTgtSpell(null);
     setHovTarget(null); selAtkRef.current = null;
@@ -859,7 +988,13 @@ export default function App() {
             schedule(() => {
               setFlyingCard(null);
               // Add to persistent history
-              setAiPlayHistory(prev => [...prev, { ...step.card, _hid: flyId, _summary: `Enemy ${step.verb} ${step.card.name}` }]);
+              setGameHistory(prev => [...prev, {
+                ...step.card,
+                _hid: flyId,
+                _side: "ai",
+                _kind: step.verb === "casts" ? "cast" : "play",
+                _summary: `Enemy ${step.verb} ${step.card.name}`,
+              }]);
             }, FLY_DURATION);
 
             // Apply game state after overlay dismissed
@@ -890,6 +1025,7 @@ export default function App() {
           });
 
         } else if (step.type === "ai_ultimate") {
+          getSFX().ultimate();
           const ultMeta = getUltimateMeta(step.heroId);
           setAiPlayOverlay({
             card: {
@@ -908,6 +1044,20 @@ export default function App() {
             setAiPlayOverlay(null);
             setGs(step.gs);
             pushLog(step.log);
+            pushHistory({
+              card: {
+                id: `ai_ult_${step.heroId}`,
+                name: ultMeta.name,
+                emoji: ultMeta.emoji || "⚡",
+                type: "spell",
+                rarity: "legendary",
+                cost: 0,
+                desc: ultMeta.desc,
+              },
+              side: "ai",
+              kind: "ultimate",
+              summary: `Enemy unleashed ${ultMeta.name}`,
+            });
             addAiAction(ultMeta.emoji || "⚡", step.log[0] || "Enemy ultimate!");
             setAiActionHighlight(true);
             schedule(() => setAiActionHighlight(false), 700);
@@ -966,6 +1116,26 @@ export default function App() {
   const playerUltUsed = gs?.player?.ultimateUses || 0;
   const playerUltAvailable = Math.max(0, Math.min(ULTIMATE_USE_MAX, playerUnlockedUltCharges) - playerUltUsed);
   const playerUltCanUse = !!gs && phase === "player_turn" && playerUltAvailable > 0 && !gs.player.ultimateUsedThisTurn;
+
+  useEffect(() => {
+    if (playerUltCanUse && !prevUltCanUseRef.current) {
+      setUltBurstKey(Date.now());
+      getSFX().ultimateReady();
+    }
+    prevUltCanUseRef.current = playerUltCanUse;
+  }, [playerUltCanUse]);
+
+  useEffect(() => {
+    if (ultBurstKey === null) return;
+    const t = setTimeout(() => setUltBurstKey(null), 1000);
+    return () => clearTimeout(t);
+  }, [ultBurstKey]);
+
+  const aiUltimateMeta = gs ? getUltimateMeta({ id: gs.ai.heroId }) : null;
+  const aiUnlockedUltCharges = gs ? getUnlockedUltimateCharges(gs.ai.maxMana) : 0;
+  const aiUltUsed = gs?.ai?.ultimateUses || 0;
+  const aiUltAvailable = Math.max(0, Math.min(ULTIMATE_USE_MAX, aiUnlockedUltCharges) - aiUltUsed);
+  const aiUltStatus = aiUltUsed >= ULTIMATE_USE_MAX ? "SPENT" : aiUnlockedUltCharges === 0 ? "LOCKED" : aiUltAvailable > 0 ? "READY" : "COOLDOWN";
   const playerUltimateInfo = gs ? {
     name: playerUltimateMeta.name,
     unlockedCharges: Math.min(ULTIMATE_USE_MAX, playerUnlockedUltCharges),
@@ -979,7 +1149,11 @@ export default function App() {
   const [cursorPos, setCursorPos] = useState(null);
 
   const handlePointerMove = useCallback((event) => {
-    // Capture coordinates synchronously before the RAF fires (event may be recycled)
+    // Only track cursor when actually needed: targeting a spell/attack or holding a selected card.
+    // Otherwise every mouse move triggers a full App re-render which re-measures all
+    // framer-motion layoutId cards in the hand → causes hover-jitter on sibling cards.
+    const needsCursor = isTargeting || !!selCard;
+    if (!needsCursor) return;
     const cx = event.clientX;
     const cy = event.clientY;
     if (pointerRafRef.current !== null) return; // already a frame pending — skip
@@ -993,7 +1167,7 @@ export default function App() {
         setIsOverPlayZone(inZone);
       }
     });
-  }, [selCard, tgtSpell, selAtk]);
+  }, [isTargeting, selCard, tgtSpell, selAtk]);
 
   useEffect(() => {
     if (!isTargeting && !selCard) {
@@ -1027,7 +1201,6 @@ export default function App() {
             onSavedDecksChange={setSavedDecks}
             activeDeck={activeDeck}
             onSelectDeck={setActiveDeck}
-            onDevSettingsChange={setDevSettings}
           />
         )}
         <HeroSelect onSelect={hero => { getSFX().cardPlay(); startGameWithFade(hero); }} />
@@ -1101,23 +1274,27 @@ export default function App() {
 
   return (
     <LayoutGroup>
-      <div
-        onMouseMove={handlePointerMove}
-        onMouseLeave={() => setCursorPos(null)}
-        onClickCapture={(event) => {
-          if (!selCard || tgtSpell || selAtk) return;
-          const inZone = isPointInPlayZone({ x: event.clientX, y: event.clientY });
-          setIsOverPlayZone(inZone);
-          if (inZone) playSelectedCard(selCard, { inPlayZone: true });
-          else console.debug("[playBlocked]", "click_outside_valid_cast_zone");
-        }}
-        onContextMenu={(event) => {
-          if (!(selCard || selAtk || tgtSpell)) return;
-          event.preventDefault();
-          cancelInteractions();
-        }}
-        className="game-root"
-        style={{ height: "100dvh", minHeight: "100dvh", overflow: "hidden", display: "flex", flexDirection: "column", fontFamily: "system-ui, sans-serif", color: "#fff", position: "relative", userSelect: "none" }}
+      {/* Fullscreen letterbox wrapper */}
+      <div style={{ position: "fixed", inset: 0, background: "#020608", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 0 }}>
+        {/* Fixed canvas — all position:fixed children anchor to this div due to transform */}
+        <div style={{ width: CANVAS_W, height: CANVAS_H, transform: `scale(${canvasScale})`, transformOrigin: "center center", position: "relative", overflow: "hidden" }}>
+          <div
+            onMouseMove={handlePointerMove}
+            onMouseLeave={() => setCursorPos(null)}
+            onClickCapture={(event) => {
+              if (!selCard || tgtSpell || selAtk) return;
+              const inZone = isPointInPlayZone({ x: event.clientX, y: event.clientY });
+              setIsOverPlayZone(inZone);
+              if (inZone) playSelectedCard(selCard, { inPlayZone: true });
+              else console.debug("[playBlocked]", "click_outside_valid_cast_zone");
+            }}
+            onContextMenu={(event) => {
+              if (!(selCard || selAtk || tgtSpell)) return;
+              event.preventDefault();
+              cancelInteractions();
+            }}
+            className="game-root"
+            style={{ width: CANVAS_W, height: CANVAS_H, overflow: "hidden", display: "flex", flexDirection: "column", fontFamily: "system-ui, sans-serif", color: "#fff", position: "relative", userSelect: "none" }}
       >
       <style>{`@keyframes pulse{0%,100%{opacity:0.6}50%{opacity:1}} @keyframes flashFade{0%{opacity:1}100%{opacity:0}} @keyframes floatUp{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}`}</style>
       {devOpen && <CardCreator onClose={() => setDevOpen(false)} savedDecks={savedDecks} onSavedDecksChange={setSavedDecks} activeDeck={activeDeck} onSelectDeck={setActiveDeck} />}
@@ -1150,6 +1327,7 @@ export default function App() {
         />
       )}
 
+      {phase === "hero_select" && (
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 16px", borderBottom: "1px solid #090f1a", background: "#060c16" }}>
         <div style={{ fontSize: 15, fontWeight: 900, color: "#378ADD", letterSpacing: 2 }}>CHRONICALLY ONLINE</div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -1157,9 +1335,36 @@ export default function App() {
           <button onClick={() => setPhase("hero_select")} style={{ background: "transparent", border: "1px solid #1e2e3e", color: "#445", borderRadius: 6, padding: "4px 12px", fontSize: 11, cursor: "pointer" }}>New Game</button>
         </div>
       </div>
+      )}
 
       {toastMsg && (
         <div style={{ position: "absolute", top: 50, left: "50%", transform: "translateX(-50%)", background: "#060f1e", border: "1px solid #378ADD", borderRadius: 8, padding: "8px 22px", fontSize: 13, color: "#85B7EB", zIndex: 200, pointerEvents: "none", whiteSpace: "nowrap", boxShadow: "0 0 20px rgba(55,138,221,0.35)" }}>{toastMsg}</div>
+      )}
+
+      {tateDiscoverChoice && (
+        <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.88)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 450, flexDirection: "column", gap: 24, backdropFilter: "blur(6px)" }}>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: 3, textTransform: "uppercase", color: "#d4af37" }}>👊 TOP G PROTOCOL</div>
+            <div style={{ fontSize: 36, fontWeight: 900, color: "#fff", textShadow: "0 0 30px rgba(212,175,55,0.7)", marginTop: 6 }}>Choose Your Weapon</div>
+            <div style={{ fontSize: 14, color: "#c5a960", marginTop: 4, fontStyle: "italic" }}>What color is your Bugatti?</div>
+          </div>
+          <div style={{ display: "flex", gap: 22, padding: 20 }}>
+            {tateDiscoverChoice.cards.map((card, i) => (
+              <motion.div
+                key={card.id}
+                initial={{ opacity: 0, y: 40, scale: 0.9 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ delay: i * 0.12, duration: 0.35 }}
+                whileHover={{ scale: 1.08, y: -8 }}
+                whileTap={{ scale: 0.96 }}
+                onClick={() => pickTateDiscover(card)}
+                style={{ cursor: "pointer", filter: "drop-shadow(0 0 22px rgba(212,175,55,0.55))" }}
+              >
+                <TemplateCardFace card={card} width={220} height={310} />
+              </motion.div>
+            ))}
+          </div>
+        </div>
       )}
 
       {winner && (
@@ -1176,359 +1381,507 @@ export default function App() {
       )}
 
       {/* ══════════════════════════════════════════════════════════════════
-           BOARD ARENA — 4-zone Hearthstone layout
-           Zone 1 (18%): enemy area   Zone 2 (22%): enemy battlefield
-           Zone 3 (22%): player battlefield   Zone 4 (38%): player area
+           BOARD ARENA — Hearthstone / LoR inspired vertical layout
+           No position:fixed for heroes — everything flows naturally.
+           Top→Bottom: enemy-hand → enemy-hero → enemy-board → player-board → player-hero → player-hand
       ══════════════════════════════════════════════════════════════════ */}
-      <div className="board-arena" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", position: "relative" }}>
-
-        {/* ── Zone 1 — Enemy Area ───────────────────────────────── */}
-        <div className="enemy-area-zone" style={{ flex: "0 0 18%", minHeight: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", padding: "0 24px 6px", position: "relative", overflow: "hidden" }}>
-          {/* AI hero + mana + deck row */}
-          <div style={{ display: "flex", alignItems: "center", gap: 20, zIndex: 2, position: "fixed", left: `${enemyHeroLayout.x}%`, top: `${enemyHeroLayout.y}%`, transform: "translate(-50%, -50%)" }}>
-            <div style={{ fontSize: 9, color: "#334" }}>deck: {gs.ai.deck.length}</div>
-            <div style={{ position: "relative", display: "inline-flex", transform: `scale(${enemyHeroLayout.size / 150})`, transformOrigin: "center center" }}>
-              <HeroPortrait name="AI Nemesis" hp={gs.ai.hp} maxHp={gs.ai.maxHp} emoji="💀" portrait={devSettings.enemyPortrait || gs.ai.portrait} armor={gs.ai.armor || 0} isAI heroRef={enemyHeroRef} isTarget={isTargeting && !aiHasTaunt} onClick={onEnemyHeroClick} />
-              {aiActionHighlight && (
-                <div style={{ position: "absolute", bottom: -8, left: "50%", transform: "translateX(-50%)", background: "rgba(239,159,39,0.92)", color: "#1a0a00", fontSize: 8, fontWeight: 900, letterSpacing: 0.8, padding: "2px 6px", borderRadius: 4, whiteSpace: "nowrap", pointerEvents: "none", boxShadow: "0 0 8px rgba(239,159,39,0.6)", zIndex: 10 }}>
-                  ⚡ ACTING
-                </div>
-              )}
-            </div>
-            <div style={{ display: "flex", gap: 3 }}>
-              {Array.from({ length: gs.ai.maxMana }).map((_, i) => (
-                <div key={i} style={{ width: 9, height: 9, borderRadius: "50%", background: i < gs.ai.mana ? "#378ADD" : "#0d1a2a", border: "1px solid #1a3a5a" }} />
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* ── Zone 2 — Enemy Battlefield ────────────────────────── */}
-        {(() => {
-          const playerSize = computeBoardCardSize(gs?.player?.board?.length || 0, playerBoardW);
-          const enemySize  = computeBoardCardSize(gs?.ai?.board?.length || 0, enemyBoardW);
-          const showBreathing = visualCfg.cardIdleBreathing !== false;
-          const showParticles = visualCfg.ambientParticles !== false;
-          const showLabels = visualCfg.showZoneLabels === true;
-          return (
-            <>
-            <div
-              ref={enemyBoardContainerRef}
-              className="board-zone board-zone--enemy"
-              style={{ position: "absolute", top: `${enemyBattlefieldLayout.y}%`, left: 0, right: 0, height: `${enemyBattlefieldLayout.height}%`, minHeight: 0, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", flexWrap: "nowrap", gap: BOARD_CARD_GAP_PX, padding: `8px ${BOARD_ZONE_PAD_X_PX}px`, ...boardHitStyle, ...(draggingCard ? { borderColor: "#FAC775", boxShadow: "0 0 16px rgba(250,199,117,0.5)" } : {}) }}
-            >
-              {showParticles && <BoardAmbience color="rgba(68,128,196,0.18)" zone="enemy" />}
-              {showLabels && gs.ai.board.length === 0 && <div className="board-zone-empty-label">— enemy board —</div>}
-              <AnimatePresence initial={false}>
-                {gs.ai.board.map(m => {
-                  const ref = getMinionRef(m.uid);
-                  return (
-                    <BoardMinion
-                      key={m.uid} minion={m} minionRef={ref}
-                      cardW={enemySize.w} cardH={enemySize.h} showBreathing={showBreathing}
-                      isSelected={!!ciaUltSelection?.minionUids.includes(m.uid)}
-                      isTarget={(isTargeting && (!aiHasTaunt || m.keywords?.includes("taunt"))) || !!ciaUltSelection}
-                      isAttacking={attackVisual?.attacker === m.uid}
-                      isDefending={attackVisual?.defender === m.uid}
-                      impactKey={attackVisual?.key}
-                      showRune={summonRunes.includes(m.uid)}
-                      attackUp={false}
-                      onClick={() => onEnemyMinionClick(m.uid)}
-                    />
-                  );
-                })}
-              </AnimatePresence>
-            </div>
-
-            {/* glowing horizon line between battlefield zones */}
-            <div style={{ position: "absolute", left: 24, right: 24, top: `${playerBattlefieldLayout.y}%`, height: 2, transform: "translateY(-1px)", background: "linear-gradient(90deg, transparent 0%, rgba(120,180,240,0.35) 20%, rgba(200,230,255,0.55) 50%, rgba(120,180,240,0.35) 80%, transparent 100%)", boxShadow: "0 0 14px rgba(120,180,240,0.35)", pointerEvents: "none", zIndex: 3, flexShrink: 0 }} />
-
-            {/* ── Zone 3 — Player Battlefield ───────────────────────── */}
-            <div
-              ref={playerBoardContainerRef}
-              className={`board-zone board-zone--player${isOverPlayZone && !!selCard && !tgtSpell ? " board-zone--drop-active" : ""}`}
-              style={{ position: "absolute", top: `${playerBattlefieldLayout.y}%`, left: 0, right: 0, height: `${playerBattlefieldLayout.height}%`, minHeight: 0, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", flexWrap: "nowrap", gap: BOARD_CARD_GAP_PX, padding: `8px ${BOARD_ZONE_PAD_X_PX}px`, ...boardHitStyle }}
-            >
-              {showParticles && <BoardAmbience color="rgba(40,138,111,0.2)" zone="player" />}
-              {showLabels && gs.player.board.length === 0 && <div className="board-zone-empty-label">— your board —</div>}
-              <AnimatePresence initial={false}>
-                {gs.player.board.map(m => {
-                  const ref = getMinionRef(m.uid);
-                  return (
-                    <BoardMinion
-                      key={m.uid} minion={m} minionRef={ref}
-                      cardW={playerSize.w} cardH={playerSize.h} showBreathing={showBreathing}
-                      isSelected={selAtk === m.uid}
-                      isTarget={!!(tgtSpell && (tgtSpell.targetType === "minion" || tgtSpell.targetType === "any"))}
-                      isAttacking={attackVisual?.attacker === m.uid}
-                      isDefending={attackVisual?.defender === m.uid}
-                      impactKey={attackVisual?.key}
-                      showRune={summonRunes.includes(m.uid)}
-                      attackUp={true}
-                      onClick={() => { console.debug("[BoardMinion onClick] uid=", m.uid); onMyMinionClick(m.uid); }}
-                    />
-                  );
-                })}
-              </AnimatePresence>
-            </div>
-            </>
-          );
-        })()}
-
-        {/* ── Zone 4 — Player Area ──────────────────────────────── */}
-        {/* overflow: visible so fixed hand cards can overlap upward */}
-        {/* pointerEvents: none so this flex shell doesn't occlude the absolutely-positioned */}
-        {/* player battlefield zone (which is a sibling earlier in DOM order but same z-index). */}
-        {/* Interactive children (hero, end-turn btn) use position:fixed + pointerEvents:auto */}
-        {/* so they are unaffected by this parent setting. */}
-        <div className="player-area-zone" style={{ flex: 1, minHeight: 0, position: "relative", overflow: "visible", pointerEvents: "none" }}>
-
-          {/* Player hero — fixed to viewport, sits above the arc hand */}
-          <div
-            ref={ultBtnRef}
-            onMouseEnter={() => setUltHover(true)}
-            onMouseLeave={() => setUltHover(false)}
-            style={{ position: "fixed", left: `${playerHeroLayout.x}%`, top: `${playerHeroLayout.y}%`, transform: `translate(-50%, -50%) scale(${playerHeroLayout.size / 150})`, transformOrigin: "center center", zIndex: 72, pointerEvents: "auto", filter: "drop-shadow(0 4px 18px rgba(0,0,0,0.70))" }}
-          >
-            <HeroPortrait name={gs.player.name} hp={gs.player.hp} maxHp={gs.player.maxHp} emoji={gs.player.emoji || "🧙"} portrait={devSettings.playerPortrait || gs.player.portrait} armor={gs.player.armor || 0} ultimateInfo={playerUltimateInfo} onUltimateClick={useUltimate} isAI={false} heroRef={playerHeroRef} showName={false} />
-          </div>
-          <AnimatePresence>
-            {ultHover && gs?.player && (
-              <UltimateTooltip
-                meta={getUltimateMeta({ id: gs.player.heroId })}
-                unlockedCharges={getUnlockedUltimateCharges(gs.player.maxMana)}
-                usedCharges={gs.player.ultimateUses || 0}
-                maxCharges={ULTIMATE_USE_MAX}
-                anchorRect={ultBtnRef.current?.getBoundingClientRect()}
-              />
-            )}
-          </AnimatePresence>
-
-          {/* End Turn button — fixed to viewport right, above the hand arc */}
-          <div style={{ position: "fixed", left: `${endTurnBtnLayout.x}%`, top: `${endTurnBtnLayout.y}%`, transform: "translate(-50%, -50%)", zIndex: 220, display: "flex", flexDirection: "column", alignItems: "center", gap: 8, pointerEvents: "auto" }}>
-            {ciaUltSelection && (
-              <div style={{ minWidth: 220, background: "rgba(5,16,26,0.94)", border: "1px solid #6dc6d6", borderRadius: 10, padding: "10px 12px", boxShadow: "0 0 18px rgba(109,198,214,0.24)" }}>
-                <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: 1, textTransform: "uppercase", color: "#6dc6d6", textAlign: "center", marginBottom: 6 }}>
-                  Deep State Download
-                </div>
-                <div style={{ fontSize: 11, color: "#c5d8e6", textAlign: "center", lineHeight: 1.4, marginBottom: 8 }}>
-                  Select up to 2 enemy minions and up to {ciaUltSelection.maxHandCards} enemy hand cards.
-                </div>
-                <div style={{ display: "flex", justifyContent: "center", gap: 10, marginBottom: 8, fontSize: 10, color: "#7ea7bc" }}>
-                  <span>Minions {ciaUltSelection.minionUids.length}/2</span>
-                  <span>Cards {ciaUltSelection.handUids.length}/{ciaUltSelection.maxHandCards}</span>
-                </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button
-                    onClick={confirmCiaUltimate}
-                    style={{ flex: 1, background: "linear-gradient(135deg,#0c4454,#15758a)", border: "none", color: "#fff", borderRadius: 8, padding: "8px 10px", fontSize: 11, fontWeight: 900, cursor: "pointer" }}
-                  >
-                    Confirm
-                  </button>
-                  <button
-                    onClick={() => cancelInteractions("CIA ultimate cancelled.")}
-                    style={{ flex: 1, background: "transparent", border: "1px solid #35566a", color: "#8fa6b4", borderRadius: 8, padding: "8px 10px", fontSize: 11, fontWeight: 900, cursor: "pointer" }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
-            {isTargeting && (
-              <button
-                onClick={() => { setSelAtk(null); setTgtSpell(null); setSelCard(null); setHovTarget(null); selAtkRef.current = null; toast("Cancelled."); }}
-                style={{ background: "transparent", border: "1px solid #E24B4A", color: "#E24B4A", borderRadius: 6, padding: "6px 14px", fontSize: 11, cursor: "pointer", fontWeight: 800, whiteSpace: "nowrap" }}
-              >
-                Cancel
-              </button>
-            )}
-            <motion.button
-              onClick={endTurn}
-              disabled={phase !== "player_turn"}
-              animate={phase === "player_turn" ? { boxShadow: ["0 0 16px rgba(13,128,80,0.5)", "0 0 28px rgba(13,128,80,0.85)", "0 0 16px rgba(13,128,80,0.5)"] } : { boxShadow: "none" }}
-              transition={phase === "player_turn" ? { duration: 1.6, repeat: Infinity, ease: "easeInOut" } : { duration: 0 }}
-              style={{ background: phase === "player_turn" ? "linear-gradient(135deg,#0a5030,#0d8050)" : "#090f0c", color: phase === "player_turn" ? "#fff" : "#223", border: "none", borderRadius: 8, padding: "12px 18px", fontSize: 13, fontWeight: 900, cursor: phase === "player_turn" ? "pointer" : "not-allowed", transition: `all ${UI_SMOOTH_TRANSITION_MS}ms ease`, minWidth: 110, whiteSpace: "nowrap" }}
-            >
-              {phase === "ai_turn" ? "💀 AI..." : "End Turn ✦"}
-            </motion.button>
-          </div>
-
-          {/* Player stats — fixed to viewport right, stacked below End Turn */}
-          <div style={{ position: "fixed", left: `${auraIndicatorLayout.x}%`, top: `${auraIndicatorLayout.y}%`, transform: "translate(-50%, -50%)", zIndex: 120, pointerEvents: "none" }}>
-            <div style={{ background: "linear-gradient(135deg,#1a3a6a,#0d2244)", border: "1px solid #378ADD", borderRadius: 8, padding: "4px 10px", fontSize: 12, fontWeight: 900, color: "#aad4ff", boxShadow: "0 0 10px rgba(55,138,221,0.45)", letterSpacing: 0.4, whiteSpace: "nowrap" }}>
-              {gs.player.mana}/{gs.player.maxMana} Aura Points
-            </div>
-          </div>
-
-          <div style={{ position: "fixed", left: `${deckHandIndicatorLayout.x}%`, top: `${deckHandIndicatorLayout.y}%`, transform: "translate(-50%, -50%)", zIndex: 120, display: "flex", flexDirection: "column", alignItems: "center", gap: 6, pointerEvents: "none" }}>
-            {/* Pending draw card — floats above the pills */}
-            <div style={{ position: "absolute", bottom: "100%", left: "50%", transform: "translateX(-50%)", marginBottom: 10, width: 100, height: 148, pointerEvents: "none" }}>
-              <AnimatePresence initial={false}>
-                {pendingDrawCard && (() => {
-                  const rc = pendingDrawCard ? (RC[pendingDrawCard.rarity || "common"] || RC.common) : RC.common;
-                  return (
-                    <motion.div
-                      key={pendingDrawCard.uid}
-                      initial={{ opacity: 0, scale: 0.35, rotate: -28, y: 60, x: 30 }}
-                      animate={{
-                        opacity: [0, 1, 1, 0.95],
-                        scale: [0.35, 1.18, 0.95, 1],
-                        rotate: [-28, 6, -2, 0],
-                        y: [60, -10, 4, 0],
-                        x: [30, 0, 0, 0],
-                      }}
-                      exit={{ opacity: 0, scale: 0.9, y: -30, transition: { duration: 0.25 } }}
-                      transition={{ duration: 0.75, times: [0, 0.45, 0.75, 1], ease: [0.25, 0.9, 0.35, 1] }}
-                      style={{ position: "relative", width: 100, minWidth: 100, height: 148, background: rc.bg, border: "2px solid " + rc.border, borderRadius: 12, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", pointerEvents: "none", boxShadow: `0 10px 30px rgba(0,0,0,0.6), 0 0 24px ${rc.glow}` }}
-                    >
-                      <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: [0, 0.8, 0] }}
-                        transition={{ duration: 0.75, times: [0, 0.4, 1] }}
-                        style={{ position: "absolute", inset: -6, borderRadius: 16, background: `radial-gradient(circle at 50% 50%, ${rc.glow} 0%, transparent 70%)`, pointerEvents: "none", zIndex: 0 }}
-                      />
-                      <span
-                        aria-hidden
-                        style={{
-                          position: "absolute", top: 0, left: "-60%", width: "60%", height: "100%",
-                          background: "linear-gradient(115deg, transparent 0%, rgba(255,255,255,0.65) 50%, transparent 100%)",
-                          animation: "ultimateShimmer 0.75s ease-out 1",
-                          pointerEvents: "none",
-                        }}
-                      />
-                      <div style={{ position: "relative", fontSize: 48, filter: `drop-shadow(0 3px 10px ${rc.glow})`, zIndex: 1 }}>{pendingDrawCard.emoji || "🃏"}</div>
-                    </motion.div>
-                  );
-                })()}
-              </AnimatePresence>
-            </div>
-            <motion.div animate={deckPulse ? { scale: [1, 1.06, 1] } : { scale: 1 }} transition={{ duration: 0.4 }} style={{ display: "inline-block" }}>
-              <div style={{ minWidth: 120, background: "linear-gradient(135deg,#111b2e,#0a1220)", border: "1px solid #2b4f78", borderRadius: 999, padding: "4px 10px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, boxShadow: "0 0 10px rgba(55,138,221,0.2)" }}>
-                <span style={{ fontSize: 11, fontWeight: 800, color: "#89a8cc", textTransform: "uppercase", letterSpacing: 0.7 }}>Deck</span>
-                <span style={{ fontSize: 16, fontWeight: 900, color: "#d9ecff", lineHeight: 1 }}>{gs.player.deck.length}</span>
-              </div>
-            </motion.div>
-            <div style={{ minWidth: 120, background: "linear-gradient(135deg,#111b2e,#0a1220)", border: "1px solid #2b4f78", borderRadius: 999, padding: "4px 10px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, boxShadow: "0 0 10px rgba(55,138,221,0.2)" }}>
-              <span style={{ fontSize: 11, fontWeight: 800, color: "#89a8cc", textTransform: "uppercase", letterSpacing: 0.7 }}>Hand</span>
-              <span style={{ fontSize: 16, fontWeight: 900, color: "#d9ecff", lineHeight: 1 }}>{gs.player.hand.length}</span>
-            </div>
-          </div>
-
-          {/* Game log — fixed, sits just above the player hero */}
-          <div style={{ position: "fixed", bottom: 390, left: "50%", transform: "translateX(-50%)", width: "clamp(260px, 40vw, 480px)", maxHeight: 22, overflow: "hidden", background: "rgba(3,6,9,0.55)", borderRadius: 4, display: "flex", flexDirection: "column-reverse", pointerEvents: "none", zIndex: 60 }}>
-            {[...log].reverse().slice(0, 1).map((l, i) => {
-              const special = l.startsWith("—") || l.startsWith("✨") || l.startsWith("🎮") || l.startsWith("🃏") || l.startsWith("AI");
-              return <div key={i} style={{ fontSize: 9, color: special ? "#1a3a5a" : "#1a2530", paddingLeft: 8, lineHeight: "22px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textAlign: "center" }}>{l}</div>;
-            })}
-          </div>
-
-        </div>{/* end Zone 4 */}
-
-      </div>{/* end board-arena */}
-
-      {/* ── Enemy Hand Fan — fixed to viewport top, face-down cards ── */}
-      {/* Rendered outside board-arena so position:fixed is always viewport-relative */}
-      {/* (inside overflow:hidden flex ancestors it could be mis-anchored in Safari/Chrome) */}
       {(() => {
-        const n = gs.ai.hand.length;
-        const showingCards = enemyHandVisible;
-        const SPACING = showingCards ? 46 : 20;
-        const fanW = n > 0 ? Math.max(showingCards ? 84 : 54, (n - 1) * SPACING + (showingCards ? 78 : 42)) : 54;
-        const maxAngle = Math.min(n * Math.max(0, enemyHandLayout.fanAngle || 0), 40);
-        const angleStep = n > 1 ? maxAngle / (n - 1) : 0;
+        const playerSize = computeBoardCardSize(gs?.player?.board?.length || 0, playerBoardW);
+        const enemySize  = computeBoardCardSize(gs?.ai?.board?.length || 0, enemyBoardW);
+        const showBreathing = visualCfg.cardIdleBreathing !== false;
+        const showParticles = visualCfg.ambientParticles !== false;
+        const showLabels = visualCfg.showZoneLabels === true;
         return (
-          <div style={{ position: "fixed", top: `${enemyHandLayout.y}%`, left: "50%", transform: "translateX(-50%)", zIndex: showingCards ? 100 : 65, pointerEvents: showingCards ? "auto" : "none" }}>
-            <div style={{ position: "relative", width: showingCards ? Math.max(fanW, n * 100) : fanW, height: showingCards ? 220 : 56, flexShrink: 0 }}>
+      <div className="board-arena" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", position: "relative", background: "radial-gradient(ellipse at 50% 50%, rgba(12,24,48,0.95) 0%, #04080f 100%)" }}>
+
+        {/* ── Enemy Hand — horizontal row above hero ─────────────── */}
+        {(() => {
+          const n = gs.ai.hand.length;
+          const showingCards = enemyHandVisible;
+          const CARD_BACK_W = 48;
+          const CARD_BACK_H = 64;
+          const SPACING = showingCards ? 86 : 28;
+          return (
+            <div style={{ flex: "0 0 80px", display: "flex", justifyContent: "center", alignItems: "center", padding: "4px 0", zIndex: showingCards ? 100 : 20, pointerEvents: showingCards ? "auto" : "none" }}>
               {n === 0
-                ? <div style={{ fontSize: 9, color: "#1a2530", lineHeight: "56px", textAlign: "center" }}>empty</div>
+                ? <div style={{ fontSize: 9, color: "#1a2530" }}>empty hand</div>
                 : gs.ai.hand.map((card, idx) => {
                     const mid = (n - 1) / 2;
-                    const angle = (idx - mid) * angleStep;
-                    const revealedSpacing = 100;
-                    const xOff = showingCards ? (idx - mid) * revealedSpacing : (idx - mid) * SPACING;
+                    const xOff = (idx - mid) * SPACING;
                     return (
                       <div key={idx}
                         className={showingCards ? "enemy-revealed-card-wrap" : undefined}
-                        style={{
-                          position: "absolute", top: 0, left: "50%",
-                          transform: `translateX(calc(-50% + ${xOff}px)) rotate(${showingCards ? 0 : angle}deg)`,
-                          transformOrigin: "center top",
-                          zIndex: idx,
-                          pointerEvents: showingCards ? "auto" : "none",
-                        }}>
+                        style={{ transform: `translateX(${xOff}px)`, position: "relative", zIndex: idx, pointerEvents: showingCards ? "auto" : "none" }}>
                         {showingCards ? (
                           <div className="enemy-revealed-card">
-                            <HandCard
-                              card={card}
-                              selected={!!ciaUltSelection?.handUids.includes(card.uid)}
-                              disabled={false}
-                              onClick={() => onEnemyHandCardClick(card.uid)}
-                              dragEnabled={false}
-                            />
+                            <HandCard card={card} selected={!!ciaUltSelection?.handUids.includes(card.uid)} disabled={false} onClick={() => onEnemyHandCardClick(card.uid)} dragEnabled={false} width={80} height={113} />
                           </div>
                         ) : (
-                          <CardBack size={38} imagePath={gs.ai.cardBack || selectedHero?.cardBack || ""} />
+                          <CardBack size={CARD_BACK_W} imagePath={gs.ai.cardBack || selectedHero?.cardBack || ""} />
                         )}
                       </div>
                     );
                   })
               }
             </div>
-          </div>
-        );
-      })()}
+          );
+        })()}
 
-      {/* ── Player Arc Hand — fixed to viewport bottom, fans up ── */}
-      {(() => {
+        {/* ── Enemy Hero Row ─────────────────────────────────────── */}
+        <div style={{ flex: "0 0 100px", display: "flex", alignItems: "center", justifyContent: "center", padding: "2px 24px", gap: 16, zIndex: 10, position: "relative" }}>
+          {/* ── Enemy Ultimate Indicator (read-only, mirrors player ult column) ── */}
+          {aiUltimateMeta && (() => {
+            const etc = aiUltimateMeta.themeColor || "#c94545";
+            const isReady = aiUltStatus === "READY";
+            const isSpent = aiUltStatus === "SPENT";
+            return (
+              <div style={{ position: "absolute", left: 270, top: "50%", transform: "translateY(-50%)", display: "flex", flexDirection: "column", alignItems: "center", gap: 5, pointerEvents: "none" }}>
+                <div style={{
+                  position: "relative",
+                  width: 82, height: 92,
+                  background: isReady
+                    ? `linear-gradient(160deg, #0a0f1a 0%, ${etc}33 55%, ${etc}66 100%)`
+                    : "linear-gradient(160deg, #070c14, #0d1624)",
+                  border: `2px solid ${isReady ? etc : isSpent ? "#2a3a4a" : "#1a2e48"}`,
+                  borderRadius: 14,
+                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3,
+                  padding: "7px 5px",
+                  boxShadow: isReady ? `0 0 18px ${etc}99, 0 0 34px ${etc}55` : "none",
+                  opacity: isSpent ? 0.5 : 1,
+                }}>
+                  <span style={{ fontSize: 26, lineHeight: 1, filter: isReady ? `drop-shadow(0 0 8px ${etc}) drop-shadow(0 0 18px ${etc}88)` : "grayscale(0.7) opacity(0.55)" }}>
+                    {aiUltimateMeta.emoji || "⚡"}
+                  </span>
+                  <span style={{ fontSize: 7, fontWeight: 900, letterSpacing: 1.2, textTransform: "uppercase", color: isReady ? "#ffc8c8" : "#334", lineHeight: 1, textShadow: isReady ? `0 0 6px ${etc}66` : "none" }}>
+                    Enemy Ult
+                  </span>
+                  <span style={{
+                    fontSize: 6.5, fontWeight: 900, letterSpacing: 1.3, textTransform: "uppercase",
+                    color: isReady ? etc : isSpent ? "#2a3a4a" : "#1e3050",
+                    padding: "2px 5px", borderRadius: 4,
+                    background: isReady ? `${etc}2c` : "transparent",
+                    border: `1px solid ${isReady ? etc + "88" : "#1a2e48"}`,
+                    lineHeight: 1.2,
+                  }}>
+                    {aiUltStatus}
+                  </span>
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {[0, 1].map(i => {
+                    const used = i < aiUltUsed;
+                    const unlocked = i < Math.min(ULTIMATE_USE_MAX, aiUnlockedUltCharges);
+                    return (
+                      <div key={i} style={{
+                        width: 12, height: 12, borderRadius: "50%",
+                        background: used ? "#0d1624" : unlocked ? etc : "#080e18",
+                        border: `1.5px solid ${used ? "#1a2e48" : unlocked ? etc : "#0f1e30"}`,
+                        boxShadow: unlocked && !used ? `0 0 8px ${etc}dd, 0 0 18px ${etc}66` : "none",
+                      }} />
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+          <div style={{ display: "flex", gap: 3, flexDirection: "column", alignItems: "center" }}>
+            <div style={{ fontSize: 9, color: "#334", fontWeight: 700 }}>DECK</div>
+            <div style={{ fontSize: 14, color: "#667", fontWeight: 900 }}>{gs.ai.deck.length}</div>
+          </div>
+          <div style={{ position: "relative", display: "inline-flex" }}>
+            <HeroPortrait name="AI Nemesis" hp={gs.ai.hp} maxHp={gs.ai.maxHp} emoji="💀" portrait={gs.ai.portrait} armor={gs.ai.armor || 0} isAI heroRef={enemyHeroRef} isTarget={isTargeting && !aiHasTaunt} onClick={onEnemyHeroClick} size={120} showName={false} />
+            {aiActionHighlight && (
+              <div style={{ position: "absolute", bottom: -8, left: "50%", transform: "translateX(-50%)", background: "rgba(239,159,39,0.92)", color: "#1a0a00", fontSize: 8, fontWeight: 900, letterSpacing: 0.8, padding: "2px 6px", borderRadius: 4, whiteSpace: "nowrap", pointerEvents: "none", boxShadow: "0 0 8px rgba(239,159,39,0.6)", zIndex: 10 }}>
+                ⚡ ACTING
+              </div>
+            )}
+          </div>
+          <div style={{ display: "flex", gap: 3 }}>
+            {Array.from({ length: gs.ai.maxMana }).map((_, i) => (
+              <div key={i} style={{ width: 10, height: 10, borderRadius: "50%", background: i < gs.ai.mana ? "#378ADD" : "#0d1a2a", border: "1px solid #1a3a5a", boxShadow: i < gs.ai.mana ? "0 0 6px rgba(55,138,221,0.6)" : "none" }} />
+            ))}
+          </div>
+        </div>
+
+        {/* ── Enemy Battlefield ──────────────────────────────────── */}
+        <div
+          ref={enemyBoardContainerRef}
+          className="board-zone board-zone--enemy"
+          style={{ flex: "1 1 28px", minHeight: 80, maxHeight: 270, display: "flex", alignItems: "center", justifyContent: "center", flexWrap: "nowrap", gap: BOARD_CARD_GAP_PX, padding: `4px ${BOARD_ZONE_PAD_X_PX}px`, position: "relative", overflow: "visible", ...boardHitStyle }}
+        >
+          {showParticles && <BoardAmbience color="rgba(68,128,196,0.18)" zone="enemy" />}
+          {showLabels && gs.ai.board.length === 0 && <div className="board-zone-empty-label">— enemy board —</div>}
+          <AnimatePresence initial={false}>
+            {gs.ai.board.map(m => {
+              const ref = getMinionRef(m.uid);
+              return (
+                <BoardMinion
+                  key={m.uid} minion={m} minionRef={ref}
+                  cardW={enemySize.w} cardH={enemySize.h} showBreathing={showBreathing}
+                  isSelected={!!ciaUltSelection?.minionUids.includes(m.uid)}
+                  isTarget={(isTargeting && (!aiHasTaunt || m.keywords?.includes("taunt"))) || !!ciaUltSelection}
+                  isAttacking={attackVisual?.attacker === m.uid}
+                  isDefending={attackVisual?.defender === m.uid}
+                  impactKey={attackVisual?.key}
+                  showRune={summonRunes.includes(m.uid)}
+                  attackUp={false}
+                  onClick={() => onEnemyMinionClick(m.uid)}
+                />
+              );
+            })}
+          </AnimatePresence>
+        </div>
+
+        {/* ── Glowing horizon line ───────────────────────────────── */}
+        <div style={{ flex: "0 0 2px", background: "linear-gradient(90deg, transparent 0%, rgba(120,180,240,0.35) 20%, rgba(200,230,255,0.55) 50%, rgba(120,180,240,0.35) 80%, transparent 100%)", boxShadow: "0 0 14px rgba(120,180,240,0.35)", margin: "0 24px", pointerEvents: "none", zIndex: 3 }} />
+
+        {/* ── Player Battlefield ─────────────────────────────────── */}
+        <div
+          ref={playerBoardContainerRef}
+          className={`board-zone board-zone--player${isOverPlayZone && !!selCard && !tgtSpell ? " board-zone--drop-active" : ""}`}
+          style={{ flex: "1 1 28px", minHeight: 80, maxHeight: 270, display: "flex", alignItems: "center", justifyContent: "center", flexWrap: "nowrap", gap: BOARD_CARD_GAP_PX, padding: `4px ${BOARD_ZONE_PAD_X_PX}px`, position: "relative", overflow: "visible", ...boardHitStyle, ...(draggingCard ? { borderColor: "#FAC775", boxShadow: "0 0 16px rgba(250,199,117,0.5)" } : {}) }}
+        >
+          {showParticles && <BoardAmbience color="rgba(40,138,111,0.2)" zone="player" />}
+          {showLabels && gs.player.board.length === 0 && <div className="board-zone-empty-label">— your board —</div>}
+          <AnimatePresence initial={false}>
+            {gs.player.board.map(m => {
+              const ref = getMinionRef(m.uid);
+              return (
+                <BoardMinion
+                  key={m.uid} minion={m} minionRef={ref}
+                  cardW={playerSize.w} cardH={playerSize.h} showBreathing={showBreathing}
+                  isSelected={selAtk === m.uid}
+                  isTarget={!!(tgtSpell && (tgtSpell.targetType === "minion" || tgtSpell.targetType === "any"))}
+                  isAttacking={attackVisual?.attacker === m.uid}
+                  isDefending={attackVisual?.defender === m.uid}
+                  impactKey={attackVisual?.key}
+                  showRune={summonRunes.includes(m.uid)}
+                  attackUp={true}
+                  onClick={() => { console.debug("[BoardMinion onClick] uid=", m.uid); onMyMinionClick(m.uid); }}
+                />
+              );
+            })}
+          </AnimatePresence>
+        </div>
+
+        {/* ── Player Hero Row — ult pinned LEFT (absolute), hero truly CENTER ── */}
+        {(() => {
+          const tc = playerUltimateMeta?.themeColor || "#9b59dd";
+          const ultStatus = playerUltUsed >= 2 ? "SPENT" : playerUnlockedUltCharges === 0 ? "LOCKED" : playerUltCanUse ? "READY" : "COOLDOWN";
+          return (
+        <div style={{ flex: "0 0 130px", display: "flex", alignItems: "flex-end", justifyContent: "center", padding: "4px 24px 4px", zIndex: 60, position: "relative" }}>
+
+          {/* ── Ultimate button (absolute, offset left of hero so hover doesn't crowd) ── */}
+          <div
+            ref={ultBtnRef}
+            onMouseEnter={() => setUltHover(true)}
+            onMouseLeave={() => setUltHover(false)}
+            style={{ position: "absolute", left: 310, bottom: 4, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}
+          >
+            {playerUltimateInfo && (
+              <>
+                {(() => {
+                  const hex = "polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)";
+                  const isReady = ultStatus === "READY";
+                  const isLocked = ultStatus === "LOCKED";
+                  const isSpent = ultStatus === "SPENT";
+                  const isCooldown = ultStatus === "COOLDOWN";
+                  return (
+                <div style={{ position: "relative", width: 128, height: 144, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <AnimatePresence>
+                    {ultBurstKey !== null && (
+                      <motion.div
+                        key={`ring-${ultBurstKey}`}
+                        aria-hidden
+                        initial={{ opacity: 0, scale: 0.4 }}
+                        animate={{ opacity: [0, 1, 0], scale: [0.5, 2.4, 3.2] }}
+                        transition={{ duration: 0.95, ease: [0.2, 0.8, 0.3, 1] }}
+                        style={{ position: "absolute", width: 150, height: 150, borderRadius: "50%", border: `3px solid ${tc}`, boxShadow: `0 0 45px ${tc}, inset 0 0 35px ${tc}aa`, pointerEvents: "none", zIndex: 4 }}
+                      />
+                    )}
+                  </AnimatePresence>
+                  <AnimatePresence>
+                    {ultBurstKey !== null && Array.from({ length: 10 }).map((_, i) => {
+                      const a = (i / 10) * Math.PI * 2;
+                      const dx = Math.cos(a) * 92;
+                      const dy = Math.sin(a) * 92;
+                      return (
+                        <motion.span
+                          key={`spk-${ultBurstKey}-${i}`}
+                          aria-hidden
+                          initial={{ opacity: 0, x: 0, y: 0, scale: 0.3 }}
+                          animate={{ opacity: [1, 1, 0], x: dx, y: dy, scale: [0.6, 1.2, 0.2] }}
+                          transition={{ duration: 0.78, ease: "easeOut", delay: 0.04 + i * 0.015 }}
+                          style={{ position: "absolute", width: 9, height: 9, borderRadius: "50%", background: `radial-gradient(circle, #fff 0%, ${tc} 50%, transparent 75%)`, boxShadow: `0 0 12px ${tc}`, pointerEvents: "none", zIndex: 5 }}
+                        />
+                      );
+                    })}
+                  </AnimatePresence>
+                  <motion.button
+                    onClick={useUltimate}
+                    disabled={!playerUltCanUse}
+                    whileHover={playerUltCanUse ? { scale: 1.06, y: -2 } : {}}
+                    whileTap={playerUltCanUse ? { scale: 0.94 } : {}}
+                    animate={
+                      ultBurstKey !== null
+                        ? { scale: [1, 1.22, 0.96, 1.06, 1] }
+                        : isReady
+                          ? { scale: [1, 1.035, 1] }
+                          : { scale: 1 }
+                    }
+                    transition={
+                      ultBurstKey !== null
+                        ? { duration: 0.7, times: [0, 0.25, 0.55, 0.8, 1], ease: "easeOut" }
+                        : isReady
+                          ? { duration: 2.2, repeat: Infinity, ease: "easeInOut" }
+                          : { duration: 0.25 }
+                    }
+                    style={{
+                      position: "relative",
+                      width: 118, height: 132,
+                      background: "transparent",
+                      border: "none",
+                      padding: 0,
+                      cursor: playerUltCanUse ? "pointer" : "not-allowed",
+                      filter: isLocked || isSpent ? "grayscale(0.9) brightness(0.55)" : "none",
+                      transition: "filter 450ms ease",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {isReady && (
+                      <span
+                        aria-hidden
+                        style={{ position: "absolute", inset: -5, clipPath: hex, background: `conic-gradient(from 0deg, transparent 0deg, ${tc} 55deg, transparent 120deg, ${tc}aa 200deg, transparent 260deg, ${tc} 325deg, transparent 360deg)`, animation: "ultOrbit 4.2s linear infinite", filter: `blur(2.5px) drop-shadow(0 0 10px ${tc})`, pointerEvents: "none" }}
+                      />
+                    )}
+                    <span aria-hidden style={{ position: "absolute", inset: 0, clipPath: hex, background: isReady ? tc : "#1a2e48", boxShadow: isReady ? `0 0 26px ${tc}aa, 0 0 52px ${tc}55` : "none", transition: "background 450ms, box-shadow 450ms" }} />
+                    <span aria-hidden style={{ position: "absolute", inset: 3, clipPath: hex, background: isReady ? `radial-gradient(ellipse at 50% 28%, ${tc}4a 0%, #0a0f1a 60%, #05080f 100%)` : "linear-gradient(160deg, #070c14 0%, #0d1624 60%, #0a121f 100%)", transition: "background 450ms" }} />
+                    <span aria-hidden style={{ position: "absolute", inset: 8, clipPath: hex, background: `repeating-linear-gradient(45deg, transparent 0 13px, ${isReady ? tc + "14" : "#10192a"} 13px 14px)`, pointerEvents: "none", opacity: 0.8 }} />
+                    {isReady && (
+                      <motion.span
+                        aria-hidden
+                        animate={{ opacity: [0.28, 0.72, 0.28] }}
+                        transition={{ duration: 1.9, repeat: Infinity, ease: "easeInOut" }}
+                        style={{ position: "absolute", inset: 8, clipPath: hex, background: `radial-gradient(circle at 50% 50%, ${tc}55 0%, transparent 65%)`, pointerEvents: "none" }}
+                      />
+                    )}
+                    {isReady && (
+                      <span aria-hidden style={{ position: "absolute", inset: 4, clipPath: hex, background: "linear-gradient(115deg, transparent 42%, rgba(255,255,255,0.28) 50%, transparent 58%)", backgroundSize: "260% 100%", animation: "ultShimmerSweep 2.6s ease-in-out infinite", pointerEvents: "none" }} />
+                    )}
+                    {isLocked && (
+                      <span aria-hidden style={{ position: "absolute", inset: 0, clipPath: hex, background: "repeating-linear-gradient(135deg, transparent 0 9px, rgba(130,150,180,0.13) 9px 11px), repeating-linear-gradient(45deg, transparent 0 9px, rgba(130,150,180,0.1) 9px 11px)", pointerEvents: "none" }} />
+                    )}
+                    {isSpent && (
+                      <span aria-hidden style={{ position: "absolute", inset: 0, clipPath: hex, background: "linear-gradient(135deg, transparent 46%, rgba(190,90,90,0.38) 49%, rgba(190,90,90,0.38) 51%, transparent 54%), linear-gradient(45deg, transparent 46%, rgba(190,90,90,0.38) 49%, rgba(190,90,90,0.38) 51%, transparent 54%)", pointerEvents: "none" }} />
+                    )}
+                    {[
+                      { top: -3, left: "50%", tx: -50, ty: 0 },
+                      { top: "22%", right: -3, tx: 0, ty: -50 },
+                      { bottom: "22%", right: -3, tx: 0, ty: 50 },
+                      { bottom: -3, left: "50%", tx: -50, ty: 0 },
+                      { bottom: "22%", left: -3, tx: 0, ty: 50 },
+                      { top: "22%", left: -3, tx: 0, ty: -50 },
+                    ].map((p, i) => (
+                      <span
+                        key={i}
+                        aria-hidden
+                        style={{ position: "absolute", top: p.top, left: p.left, right: p.right, bottom: p.bottom, transform: `translate(${p.tx}%, ${p.ty}%)`, width: 6, height: 6, borderRadius: "50%", background: isReady ? tc : "#263a54", boxShadow: isReady ? `0 0 9px ${tc}` : "none", transition: "background 450ms, box-shadow 450ms", zIndex: 3 }}
+                      />
+                    ))}
+                    <motion.span
+                      animate={isReady ? { y: [0, -2, 0] } : { y: 0 }}
+                      transition={isReady ? { duration: 2.4, repeat: Infinity, ease: "easeInOut" } : {}}
+                      style={{ position: "relative", fontSize: 40, lineHeight: 1, zIndex: 3, filter: isReady ? `drop-shadow(0 0 12px ${tc}) drop-shadow(0 0 24px ${tc}cc)` : "none", marginTop: 2, marginBottom: 2 }}
+                    >
+                      {playerUltimateMeta.emoji}
+                    </motion.span>
+                    <span style={{ position: "relative", fontSize: 8.5, fontWeight: 900, letterSpacing: 2.4, textTransform: "uppercase", color: isReady ? "#f3f9ff" : "#2b3f5a", textShadow: isReady ? `0 0 10px ${tc}, 0 0 20px ${tc}88` : "none", marginTop: 1, zIndex: 3, fontFamily: "inherit" }}>
+                      Ultimate
+                    </span>
+                    <span style={{ position: "relative", fontSize: 7.5, fontWeight: 900, letterSpacing: 1.4, textTransform: "uppercase", color: isReady ? tc : isSpent ? "#7a3a3a" : isCooldown ? "#3a5580" : "#1f3050", background: isReady ? `${tc}22` : "transparent", border: `1px solid ${isReady ? tc + "aa" : isSpent ? "#5a2a2a" : "#1a2e48"}`, padding: "2px 7px", borderRadius: 3, marginTop: 3, zIndex: 3, lineHeight: 1.1 }}>
+                      {ultStatus}
+                    </span>
+                  </motion.button>
+                </div>
+                  );
+                })()}
+
+                {/* Charge gems — orbital diamonds */}
+                <div style={{ display: "flex", gap: 14, marginTop: 2 }}>
+                  {[0, 1].map(i => {
+                    const used = i < playerUltUsed;
+                    const unlocked = i < Math.min(ULTIMATE_USE_MAX, playerUnlockedUltCharges);
+                    const live = unlocked && !used;
+                    return (
+                      <motion.div
+                        key={i}
+                        animate={live ? { scale: [1, 1.18, 1], rotate: [45, 55, 45] } : { scale: 1, rotate: 45 }}
+                        transition={live ? { duration: 1.8, repeat: Infinity, ease: "easeInOut", delay: i * 0.25 } : { duration: 0 }}
+                        style={{
+                          width: 14, height: 14,
+                          background: used ? "#0d1624" : live ? `linear-gradient(135deg, #ffffff 0%, ${tc} 55%, ${tc}88 100%)` : "#0a1220",
+                          border: `1.5px solid ${used ? "#1a2e48" : live ? tc : "#0f1e30"}`,
+                          boxShadow: live ? `0 0 12px ${tc}, 0 0 24px ${tc}77, inset 0 0 4px #fff` : used ? "inset 0 0 6px #000" : "none",
+                          transition: "background 400ms",
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Hero portrait — CENTER */}
+          <div style={{ position: "relative", filter: "drop-shadow(0 4px 18px rgba(0,0,0,0.70))" }}>
+            <HeroPortrait name={gs.player.name} hp={gs.player.hp} maxHp={gs.player.maxHp} emoji={gs.player.emoji || "🧙"} portrait={gs.player.portrait} armor={gs.player.armor || 0} isAI={false} heroRef={playerHeroRef} showName={false} size={120} />
+          </div>
+        </div>
+          );
+        })()}
+
+        {/* ── Hand spacer — reserves room so hand cards don't overlap hero ── */}
+        <div style={{ flex: "0 0 175px" }} />
+
+        {/* Ultimate tooltip */}
+        <AnimatePresence>
+          {ultHover && gs?.player && (
+            <UltimateTooltip
+              meta={getUltimateMeta({ id: gs.player.heroId })}
+              unlockedCharges={getUnlockedUltimateCharges(gs.player.maxMana)}
+              usedCharges={gs.player.ultimateUses || 0}
+              maxCharges={ULTIMATE_USE_MAX}
+              anchorRect={ultBtnRef.current?.getBoundingClientRect()}
+            />
+          )}
+        </AnimatePresence>
+
+        {/* ── End Turn + Cancel — center-right overlay ────────────── */}
+        <div style={{ position: "absolute", right: 60, top: "50%", transform: "translateY(-50%)", zIndex: 20, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+          {ciaUltSelection && (
+            <div style={{ minWidth: 220, background: "rgba(5,16,26,0.94)", border: "1px solid #6dc6d6", borderRadius: 10, padding: "10px 12px", boxShadow: "0 0 18px rgba(109,198,214,0.24)" }}>
+              <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: 1, textTransform: "uppercase", color: "#6dc6d6", textAlign: "center", marginBottom: 6 }}>Deep State Download</div>
+              <div style={{ fontSize: 11, color: "#c5d8e6", textAlign: "center", lineHeight: 1.4, marginBottom: 8 }}>Select up to 2 enemy minions and up to {ciaUltSelection.maxHandCards} enemy hand cards.</div>
+              <div style={{ display: "flex", justifyContent: "center", gap: 10, marginBottom: 8, fontSize: 10, color: "#7ea7bc" }}>
+                <span>Minions {ciaUltSelection.minionUids.length}/2</span>
+                <span>Cards {ciaUltSelection.handUids.length}/{ciaUltSelection.maxHandCards}</span>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={confirmCiaUltimate} style={{ flex: 1, background: "linear-gradient(135deg,#0c4454,#15758a)", border: "none", color: "#fff", borderRadius: 8, padding: "8px 10px", fontSize: 11, fontWeight: 900, cursor: "pointer" }}>Confirm</button>
+                <button onClick={() => cancelInteractions("CIA ultimate cancelled.")} style={{ flex: 1, background: "transparent", border: "1px solid #35566a", color: "#8fa6b4", borderRadius: 8, padding: "8px 10px", fontSize: 11, fontWeight: 900, cursor: "pointer" }}>Cancel</button>
+              </div>
+            </div>
+          )}
+          {isTargeting && (
+            <button onClick={() => { setSelAtk(null); setTgtSpell(null); setSelCard(null); setHovTarget(null); selAtkRef.current = null; toast("Cancelled."); }} style={{ background: "transparent", border: "1px solid #E24B4A", color: "#E24B4A", borderRadius: 6, padding: "6px 14px", fontSize: 11, cursor: "pointer", fontWeight: 800, whiteSpace: "nowrap" }}>Cancel</button>
+          )}
+          <motion.button
+            onClick={endTurn}
+            disabled={phase !== "player_turn"}
+            animate={phase === "player_turn" ? { boxShadow: ["0 0 16px rgba(13,128,80,0.5)", "0 0 28px rgba(13,128,80,0.85)", "0 0 16px rgba(13,128,80,0.5)"] } : { boxShadow: "none" }}
+            transition={phase === "player_turn" ? { duration: 1.6, repeat: Infinity, ease: "easeInOut" } : { duration: 0 }}
+            style={{ background: phase === "player_turn" ? "linear-gradient(135deg,#0a5030,#0d8050)" : "#090f0c", color: phase === "player_turn" ? "#fff" : "#223", border: "none", borderRadius: 10, padding: "14px 22px", fontSize: 14, fontWeight: 900, cursor: phase === "player_turn" ? "pointer" : "not-allowed", transition: `all ${UI_SMOOTH_TRANSITION_MS}ms ease`, minWidth: 120, whiteSpace: "nowrap" }}
+          >
+            {phase === "ai_turn" ? "💀 AI..." : "End Turn ✦"}
+          </motion.button>
+          {/* AP / Deck / Hand boxes UNDER End Turn */}
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, marginTop: 12 }}>
+            <motion.div animate={deckPulse ? { scale: [1, 1.06, 1] } : { scale: 1 }} transition={{ duration: 0.4 }} style={{ display: "inline-block" }}>
+              <div style={{ background: "linear-gradient(135deg,#1a3a6a,#0d2244)", border: "2px solid #378ADD", borderRadius: 12, padding: "8px 16px", fontSize: 16, fontWeight: 900, color: "#aad4ff", boxShadow: "0 0 20px rgba(55,138,221,0.55)", letterSpacing: 0.4, whiteSpace: "nowrap", minWidth: 100, textAlign: "center" }}>
+                {gs.player.mana}/{gs.player.maxMana} Aura Points
+              </div>
+            </motion.div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <div style={{ minWidth: 70, background: "linear-gradient(135deg,#111b2e,#0a1220)", border: "1px solid #2b4f78", borderRadius: 999, padding: "4px 10px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, boxShadow: "0 0 8px rgba(55,138,221,0.2)" }}>
+                <span style={{ fontSize: 8, fontWeight: 800, color: "#89a8cc", textTransform: "uppercase", letterSpacing: 0.5 }}>Deck</span>
+                <span style={{ fontSize: 12, fontWeight: 900, color: "#d9ecff", lineHeight: 1 }}>{gs.player.deck.length}</span>
+              </div>
+              <div style={{ minWidth: 70, background: "linear-gradient(135deg,#111b2e,#0a1220)", border: "1px solid #2b4f78", borderRadius: 999, padding: "4px 10px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, boxShadow: "0 0 8px rgba(55,138,221,0.2)" }}>
+                <span style={{ fontSize: 8, fontWeight: 800, color: "#89a8cc", textTransform: "uppercase", letterSpacing: 0.5 }}>Hand</span>
+                <span style={{ fontSize: 12, fontWeight: 900, color: "#d9ecff", lineHeight: 1 }}>{gs.player.hand.length}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Draw card animation — flies from deck area to hero center ── */}
+        <AnimatePresence initial={false}>
+          {pendingDrawCard && (() => {
+            const rc = RC[pendingDrawCard.rarity || "common"] || RC.common;
+            return (
+              <motion.div
+                key={pendingDrawCard.uid}
+                initial={{ opacity: 0, scale: 0.3, x: 120, y: -80 }}
+                animate={{
+                  opacity: [0, 1, 1, 1, 0],
+                  scale: [0.3, 1.15, 1, 0.95, 0.7],
+                  x: [120, 40, 0, -20, -60],
+                  y: [-80, -40, 0, 20, 60],
+                }}
+                transition={{ duration: 0.9, times: [0, 0.3, 0.55, 0.75, 1], ease: [0.25, 0.9, 0.35, 1] }}
+                style={{
+                  position: "absolute",
+                  bottom: 90,
+                  left: "50%",
+                  marginLeft: -50,
+                  width: 100,
+                  height: 148,
+                  background: rc.bg,
+                  border: "2px solid " + rc.border,
+                  borderRadius: 12,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  pointerEvents: "none",
+                  boxShadow: `0 10px 30px rgba(0,0,0,0.6), 0 0 24px ${rc.glow}`,
+                  zIndex: 300,
+                }}
+              >
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: [0, 0.8, 0] }}
+                  transition={{ duration: 0.75, times: [0, 0.4, 1] }}
+                  style={{ position: "absolute", inset: -6, borderRadius: 16, background: `radial-gradient(circle at 50% 50%, ${rc.glow} 0%, transparent 70%)`, pointerEvents: "none", zIndex: 0 }}
+                />
+                <span aria-hidden style={{ position: "absolute", top: 0, left: "-60%", width: "60%", height: "100%", background: "linear-gradient(115deg, transparent 0%, rgba(255,255,255,0.65) 50%, transparent 100%)", animation: "ultimateShimmer 0.75s ease-out 1", pointerEvents: "none" }} />
+                <div style={{ position: "relative", fontSize: 38, filter: `drop-shadow(0 3px 10px ${rc.glow})`, zIndex: 1 }}>{pendingDrawCard.emoji || "🃏"}</div>
+                <div style={{ fontSize: 9, fontWeight: 800, color: "#fff", textAlign: "center", marginTop: 4, zIndex: 1 }}>{pendingDrawCard.name}</div>
+              </motion.div>
+            );
+          })()}
+        </AnimatePresence>
+
+        {/* Game log removed */}
+
+        {/* ── Player Arc Hand — inside board-arena at bottom ────────── */}
+        {(() => {
         const hand = gs.player.hand;
         const n = hand.length;
-
-        // Card size: clamp 80–120px, shrink for large hands
         const CARD_W = Math.round(Math.max(80, Math.min(120, n <= 4 ? 120 : n <= 6 ? 108 : n <= 8 ? 96 : 80)));
         const CARD_H = Math.round(CARD_W * (246 / 174));
-
-        // Horizontal spread: use real viewport width so all cards always fit
-        const vw = typeof window !== "undefined" ? window.innerWidth : 480;
-        const MAX_SPREAD_PX = Math.min(vw - 48, 560);
+        const CANVAS_WIDTH = CANVAS_W;
+        const MAX_SPREAD_PX = Math.min(CANVAS_WIDTH - 48, 560);
         const X_STEP = n <= 1 ? 0 : Math.min(CARD_W * 0.78, MAX_SPREAD_PX / Math.max(1, n - 1));
-
-        // Arc: edge cards drop DOWN (positive y = down), center card is highest
-        const baseAngle = playerHandLayout.fanAngle;
+        const baseAngle = 5;
         const ANGLE_STEP = n <= 4 ? baseAngle : n <= 7 ? baseAngle * 0.7 : baseAngle * 0.5;
-        const CURVE_K    = n <= 4 ? 5 : n <= 7 ? 3   : 2;
-
-        // Selection lift: card moves further up when selected
+        const CURVE_K = n <= 4 ? 5 : n <= 7 ? 3 : 2;
         const SELECTION_LIFT = 28;
-
-        // Container sits at the screen bottom; tall enough for center card + lift buffer
-        const BOTTOM_INSET = 6; // gap between card bottom and screen edge
+        const BOTTOM_INSET = 6;
         const CONTAINER_H = CARD_H + SELECTION_LIFT + BOTTOM_INSET + 4;
 
         function arcFor(i) {
           const mid = (n - 1) / 2;
           const normalized = i - mid;
-          const x = normalized * X_STEP;
-          const y = Math.pow(Math.abs(normalized), 2) * CURVE_K;
-          const rotate = normalized * ANGLE_STEP;
-          return { x, y, rotate };
+          return { x: normalized * X_STEP, y: Math.pow(Math.abs(normalized), 2) * CURVE_K, rotate: normalized * ANGLE_STEP };
         }
 
         return (
-          <div style={{
-            position: "fixed",
-            top: `${playerHandLayout.y}%`,
-            left: 0,
-            right: 0,
-            height: CONTAINER_H,
-            overflow: "visible",
-            zIndex: 50,
-            pointerEvents: "none",       // container transparent to clicks
-            transform: "translateY(-100%)",
-          }}>
+          <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: CONTAINER_H, overflow: "visible", zIndex: 50, pointerEvents: "none" }}>
             {n === 0 && (
-              <div style={{ position: "absolute", bottom: BOTTOM_INSET + 8, left: 0, right: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#1a2030", fontSize: 13, pointerEvents: "none" }}>
-                No cards — topdeck mode
-              </div>
+              <div style={{ position: "absolute", bottom: BOTTOM_INSET + 8, left: 0, right: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#1a2030", fontSize: 13, pointerEvents: "none" }}>No cards — topdeck mode</div>
             )}
             <AnimatePresence initial={false}>
               {hand.map((card, i) => {
@@ -1542,39 +1895,50 @@ export default function App() {
                     animate={{ opacity: 1, y: isSelected ? y - SELECTION_LIFT : y, x, rotate, scale: 1 }}
                     exit={{ opacity: 0, y: 80, x, rotate, scale: 0.7, transition: { duration: 0.22 } }}
                     transition={{ type: "spring", stiffness: 280, damping: 26 }}
-                    style={{
-                      position: "absolute",
-                      bottom: BOTTOM_INSET,
-                      left: "50%",
-                      marginLeft: -(CARD_W / 2),
-                      transformOrigin: "50% 100%",   // rotate from bottom-center
-                      zIndex: isSelected ? 40 : 10 + i,
-                      pointerEvents: "auto",          // cards are interactive
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.zIndex = String(isSelected ? 42 : 35); }}
-                    onMouseLeave={e => { e.currentTarget.style.zIndex = String(isSelected ? 40 : 10 + i); }}
+                    style={{ position: "absolute", bottom: BOTTOM_INSET, left: "50%", marginLeft: -(CARD_W / 2), transformOrigin: "50% 100%", zIndex: isSelected ? 40 : 10 + i, pointerEvents: "auto" }}
                   >
-                    <HandCard
-                      card={card}
-                      selected={isSelected}
-                      disabled={card.cost > gs.player.mana || phase !== "player_turn"}
-                      onClick={() => onHandClick(card)}
-                      dragEnabled={canDrag}
-                      onDragStart={() => handleCardDragStart(card)}
-                      onDragEnd={(point) => handleCardDragEnd(card, point)}
-                      width={CARD_W}
-                      height={CARD_H}
-                    />
+                    <HandCard card={card} selected={isSelected} disabled={card.cost > gs.player.mana || phase !== "player_turn"} onClick={() => onHandClick(card)} dragEnabled={canDrag} onDragStart={() => handleCardDragStart(card)} onDragEnd={(point) => handleCardDragEnd(card, point)} width={CARD_W} height={CARD_H} />
                   </motion.div>
                 );
               })}
             </AnimatePresence>
           </div>
         );
+        })()}
+      </div>
+        );
       })()}
 
+      {/* ── Keyword Guide (bottom-right, static reference) ── */}
+      <div style={{ position: "fixed", right: 16, bottom: 16, width: 192, zIndex: 140, pointerEvents: "none" }}>
+        <div style={{
+          background: "linear-gradient(145deg, rgba(6,10,22,0.94), rgba(10,16,32,0.94))",
+          border: "1px solid rgba(55,138,221,0.35)",
+          borderRadius: 10,
+          padding: "8px 10px 9px",
+          boxShadow: "0 6px 22px rgba(0,0,0,0.7), 0 0 14px rgba(55,138,221,0.18)",
+        }}>
+          <div style={{ fontSize: 9, fontWeight: 900, color: "#6d92c2", letterSpacing: 2, textTransform: "uppercase", marginBottom: 6, textAlign: "center", borderBottom: "1px solid rgba(55,138,221,0.22)", paddingBottom: 4 }}>
+            Guide
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {[
+              { k: "Taunt",     c: "#EF9F27", d: "Must attack me first" },
+              { k: "Battlecry", c: "#378ADD", d: "Triggers when played" },
+              { k: "Charge",    c: "#1D9E75", d: "Can attack immediately" },
+              { k: "Elusive",   c: "#9b59dd", d: "Can't be targeted by spells" },
+            ].map(({ k, c, d }) => (
+              <div key={k} style={{ display: "flex", alignItems: "baseline", gap: 6, fontSize: 10, lineHeight: 1.3 }}>
+                <span style={{ color: c, fontWeight: 900, letterSpacing: 0.4, minWidth: 56, flexShrink: 0 }}>{k}</span>
+                <span style={{ color: "#9cb4d2", fontWeight: 500 }}>— {d}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* ── AI Action Log (right side, ephemeral) ── */}
-      <div style={{ position: "fixed", right: 8, top: 120, width: 172, zIndex: 150, display: "flex", flexDirection: "column", gap: 5, pointerEvents: "none" }}>
+      <div style={{ position: "fixed", right: 160, top: 80, width: 172, zIndex: 150, display: "flex", flexDirection: "column", gap: 5, pointerEvents: "none" }}>
         <AnimatePresence>
           {aiActions.map(a => (
             <motion.div
@@ -1592,20 +1956,25 @@ export default function App() {
         </AnimatePresence>
       </div>
 
-      {/* ── Enemy Play History panel (left side, persistent) ── */}
-      <div style={{ position: "fixed", left: 0, top: 44, bottom: 0, width: 148, zIndex: 140, pointerEvents: selCard ? "none" : "auto", display: "flex", flexDirection: "column" }}>
-        <div style={{ background: "rgba(4,6,14,0.88)", borderRight: "1px solid #0d1525", height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          <div style={{ padding: "8px 10px 5px", fontSize: 8, fontWeight: 900, color: "#1a3050", letterSpacing: 2, textTransform: "uppercase", borderBottom: "1px solid #0d1525", flexShrink: 0 }}>
-            Enemy played
+      {/* ── Match History panel (left side, persistent — both sides, cards + ultimates) ── */}
+      <div style={{ position: "fixed", left: 0, top: 44, bottom: 0, width: 172, zIndex: 140, pointerEvents: selCard ? "none" : "auto", display: "flex", flexDirection: "column" }}>
+        <div style={{ background: "rgba(4,6,14,0.92)", borderRight: "1px solid #0d1525", height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <div style={{ padding: "8px 10px 5px", fontSize: 8, fontWeight: 900, color: "#3a5578", letterSpacing: 2, textTransform: "uppercase", borderBottom: "1px solid #0d1525", flexShrink: 0, textAlign: "center" }}>
+            Match History
           </div>
           <div style={{ flex: 1, overflowY: "auto", padding: "6px 8px", display: "flex", flexDirection: "column", gap: 6 }}>
             <AnimatePresence initial={false}>
-              {aiPlayHistory.map((card) => {
+              {gameHistory.map((card) => {
                 const rcH = RC[card.rarity || "common"];
+                const isPlayer = card._side === "player";
+                const isUlt = card._kind === "ultimate";
+                const sideBar = isPlayer ? "#1D9E75" : "#c94545";
+                const kindLabel = isUlt ? "ULTIMATE" : card._kind === "cast" ? "SPELL" : "MINION";
+                const sideLabel = isPlayer ? "YOU" : "ENEMY";
                 return (
                   <motion.div
                     key={card._hid}
-                    initial={{ x: -120, opacity: 0, scale: 0.85 }}
+                    initial={{ x: isPlayer ? 120 : -120, opacity: 0, scale: 0.85 }}
                     animate={{ x: 0, opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.7, transition: { duration: 0.25 } }}
                     transition={{ type: "spring", stiffness: 320, damping: 28, delay: 0 }}
@@ -1613,35 +1982,40 @@ export default function App() {
                     onMouseLeave={() => setHoveredHistoryCard(prev => (prev?._hid === card._hid ? null : prev))}
                     style={{
                       background: rcH.bg,
-                      border: "1px solid " + rcH.border,
+                      border: `1px solid ${isUlt ? "#EF9F27" : rcH.border}`,
+                      borderLeft: `4px solid ${sideBar}`,
                       borderRadius: 8,
                       padding: "5px 7px",
                       display: "flex", alignItems: "center", gap: 7,
-                      boxShadow: "0 2px 10px rgba(0,0,0,0.5), 0 0 8px " + rcH.glow,
+                      boxShadow: "0 2px 10px rgba(0,0,0,0.5), 0 0 8px " + (isUlt ? "rgba(239,159,39,0.55)" : rcH.glow),
                       flexShrink: 0,
                       pointerEvents: "auto",
                       cursor: "default",
                     }}
                   >
-                    <span style={{ fontSize: 20, flexShrink: 0 }}>{card.emoji || "🃏"}</span>
-                    <div style={{ minWidth: 0 }}>
+                    <span style={{ fontSize: 20, flexShrink: 0, filter: isUlt ? "drop-shadow(0 0 6px rgba(239,159,39,0.8))" : "none" }}>{card.emoji || "🃏"}</span>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <span style={{ fontSize: 7, fontWeight: 900, color: sideBar, letterSpacing: 0.5 }}>{sideLabel}</span>
+                        <span style={{ fontSize: 7, fontWeight: 800, color: isUlt ? "#EF9F27" : "#7f96b8", letterSpacing: 0.5 }}>• {kindLabel}</span>
+                      </div>
                       <div style={{ fontSize: 9, fontWeight: 900, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{card.name}</div>
-                      <div style={{ fontSize: 8, color: rcH.label, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>{card.rarity}</div>
-                      <div style={{ fontSize: 7, color: "#7f96b8", lineHeight: 1.2, marginTop: 2, maxHeight: 18, overflow: "hidden" }}>{card._summary || "Enemy played this card"}</div>
                       {card.type === "minion" && (
-                        <div style={{ display: "flex", gap: 4, marginTop: 2 }}>
+                        <div style={{ display: "flex", gap: 4, marginTop: 1 }}>
                           <span style={{ fontSize: 8, color: "#ff9988", fontWeight: 900 }}>⚔{card.atk}</span>
                           <span style={{ fontSize: 8, color: "#88ffaa", fontWeight: 900 }}>♥{card.hp}</span>
                         </div>
                       )}
                     </div>
-                    <div style={{ marginLeft: "auto", fontSize: 9, fontWeight: 900, color: "#aad4ff", background: "rgba(0,0,0,0.5)", borderRadius: 4, padding: "1px 4px", flexShrink: 0 }}>{card.cost}</div>
+                    {!isUlt && (
+                      <div style={{ marginLeft: "auto", fontSize: 9, fontWeight: 900, color: "#aad4ff", background: "rgba(0,0,0,0.5)", borderRadius: 4, padding: "1px 4px", flexShrink: 0 }}>{card.cost}</div>
+                    )}
                   </motion.div>
                 );
               })}
             </AnimatePresence>
-            {aiPlayHistory.length === 0 && (
-              <div style={{ fontSize: 9, color: "#0d1525", textAlign: "center", marginTop: 12 }}>nothing yet</div>
+            {gameHistory.length === 0 && (
+              <div style={{ fontSize: 9, color: "#1a3050", textAlign: "center", marginTop: 12 }}>nothing yet</div>
             )}
           </div>
         </div>
@@ -1654,7 +2028,7 @@ export default function App() {
             <motion.div
               key={flyingCard.id}
               initial={{ opacity: 1, scale: 1, x: "-50%", y: "-50%", left: `${LEFT_REVEAL_LEFT_PX + REVEAL_CARD_WIDTH_PX / 2}px`, top: `${LEFT_REVEAL_TOP_PX + REVEAL_CARD_HEIGHT_PX / 2}px` }}
-              animate={{ opacity: 0, scale: 0.45, x: "-50%", y: "-50%", left: "74px", top: "160px" }}
+              animate={{ opacity: 0, scale: 0.45, x: "-50%", y: "-50%", left: "86px", top: "160px" }}
               transition={{ duration: 0.55, ease: [0.4, 0, 0.2, 1] }}
               style={{
                 position: "fixed", zIndex: 820, pointerEvents: "none",
@@ -1699,10 +2073,10 @@ export default function App() {
               animate={{ opacity: 1, x: 0, scale: 1 }}
               exit={{ opacity: 0, x: -18, scale: 0.96 }}
               transition={{ duration: 0.16 }}
-              style={{ position: "fixed", left: 164, top: 74, width: 190, minHeight: 260, borderRadius: 16, padding: 10, zIndex: 850, pointerEvents: "none", boxShadow: "0 14px 32px rgba(0,0,0,0.7)" }}
+              style={{ position: "fixed", left: 188, top: 74, width: 190, minHeight: 260, borderRadius: 16, padding: 10, zIndex: 850, pointerEvents: "none", boxShadow: "0 14px 32px rgba(0,0,0,0.7)" }}
             >
               <TemplateCardFace card={card} width={170} height={240} />
-              <div style={{ marginTop: 6, fontSize: 8, color: "#8aa8cc", textAlign: "center" }}>{card._summary || "Enemy played this card."}</div>
+              <div style={{ marginTop: 6, fontSize: 8, color: "#8aa8cc", textAlign: "center" }}>{card._summary || (card._side === "ai" ? "Enemy played this card." : "You played this card.")}</div>
             </motion.div>
           );
         })()}
@@ -1755,7 +2129,10 @@ export default function App() {
         </div>
       )}
 
-    </div></LayoutGroup>
+          </div>
+        </div>
+      </div>
+    </LayoutGroup>
   );
 }
 

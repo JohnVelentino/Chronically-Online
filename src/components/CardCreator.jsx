@@ -3,10 +3,24 @@ import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import HandCard from "./HandCard.jsx";
 import TemplateCardFace from "./TemplateCardFace.jsx";
-import { addCustomCard, buildDeckEntry, DECK_SIZE_TARGET, deleteLibraryCard, getCustomCards, getLib, HEROES, upsertLibraryCard } from "../data/cards.js";
+import {
+  addCustomCard,
+  buildDeckEntry,
+  DECK_SIZE_TARGET,
+  deleteLibraryCard,
+  getCustomCards,
+  getLib,
+  HEROES,
+  upsertLibraryCard,
+  getHeroDeckIds,
+  setHeroDeckIds,
+  resetHeroDeckIds,
+  getHeroPortraitOverride,
+  setHeroPortraitOverride,
+  resetHeroPortraitOverride,
+} from "../data/cards.js";
 import { mkUid } from "../engine/gameState.js";
 import { getSFX } from "../audio/sfx.js";
-import { DEFAULT_DEV_CONFIG, getDevConfig, resetDevConfig, setDevConfig, subscribe } from "../dev/devConfig.js";
 
 // Full card preview rendered via portal ג€” appears right or left of the hovered row
 const PREVIEW_W = 174;
@@ -153,668 +167,314 @@ const inp = { background: "#060c18", border: "1px solid #1e3a5a", borderRadius: 
 const lbl = { fontSize: 10, color: "#556", marginBottom: 5, display: "block", textTransform: "uppercase", letterSpacing: 0.8, fontWeight: 700 };
 const sectionHdr = { fontSize: 9, color: "#378ADD", fontWeight: 900, letterSpacing: 2, textTransform: "uppercase", marginBottom: 8, paddingBottom: 4, borderBottom: "1px solid #0d1e30" };
 
-// ג”€ג”€ DEV Settings defaults ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€ג”€
-function getPath(obj, path) {
-  return path.split(".").reduce((acc, key) => (acc == null ? undefined : acc[key]), obj);
-}
+// ── Hero Dev Tab ─────────────────────────────────────────────────────────────
+// Edit hero portraits and prebuilt decks. Saves to localStorage; read by
+// getHeroDeckIds / getHeroPortraitOverride at game start.
 
-function patchFromPath(path, value) {
-  const keys = path.split(".");
-  const root = {};
-  let cur = root;
-  keys.forEach((k, i) => {
-    if (i === keys.length - 1) cur[k] = value;
-    else {
-      cur[k] = {};
-      cur = cur[k];
-    }
+function readFileAsDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
   });
-  return root;
 }
 
-function DevSection({ title, subtitle, defaultOpen = true, children }) {
-  return (
-    <details open={defaultOpen} style={{ border: "1px solid #1a2b43", borderRadius: 10, background: "rgba(4,10,18,0.85)", overflow: "hidden" }}>
-      <summary style={{ cursor: "pointer", listStyle: "none", padding: "10px 12px", borderBottom: "1px solid #0f1b2b", display: "flex", flexDirection: "column", gap: 2 }}>
-        <span style={{ fontSize: 11, color: "#96c7ff", letterSpacing: 1, fontWeight: 900, textTransform: "uppercase" }}>{title}</span>
-        {subtitle && <span style={{ fontSize: 11, color: "#5f7d9f" }}>{subtitle}</span>}
-      </summary>
-      <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>{children}</div>
-    </details>
-  );
-}
+function HeroDevTabSection() {
+  const lib = useMemo(() => getLib(), []);
+  const cardById = useMemo(() => {
+    const m = new Map();
+    lib.forEach(c => m.set(c.id, c));
+    return m;
+  }, [lib]);
 
-function DevFieldGrid({ cols = 3, children }) {
-  return <div style={{ display: "grid", gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gap: 8 }}>{children}</div>;
-}
+  const [selectedHeroId, setSelectedHeroId] = useState(HEROES[0]?.id || null);
+  const [portraits, setPortraits] = useState(() => {
+    const out = {};
+    HEROES.forEach(h => { out[h.id] = getHeroPortraitOverride(h.id) || h.portrait || null; });
+    return out;
+  });
+  const [decks, setDecks] = useState(() => {
+    const out = {};
+    HEROES.forEach(h => { out[h.id] = getHeroDeckIds(h.id); });
+    return out;
+  });
+  const [cardSearch, setCardSearch] = useState("");
+  const [classFilter, setClassFilter] = useState("all");
 
-function DevNumberInput({ label, value, min, max, step = 1, unit = "", onChange, onFocus }) {
-  return (
-    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <span style={{ fontSize: 10, color: "#6f8cad", textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 }}>{label}</span>
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <input onFocus={onFocus} type="number" value={Number.isFinite(value) ? value : 0} min={min} max={max} step={step} onChange={e => onChange(Number(e.target.value))} style={{ ...inp, padding: "6px 8px", fontSize: 12 }} />
-        {unit && <span style={{ fontSize: 11, color: "#7fa4cb", minWidth: 22 }}>{unit}</span>}
-      </div>
-    </label>
-  );
-}
+  const hero = HEROES.find(h => h.id === selectedHeroId) || HEROES[0];
+  const heroDeck = useMemo(() => decks[hero.id] || [], [decks, hero.id]);
+  const fileInputRef = useRef(null);
 
-function DevSlider({ label, value, min, max, step = 1, onChange, onFocus }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <div style={{ display: "flex", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 10, color: "#6f8cad", textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 }}>{label}</span>
-        <span style={{ fontSize: 11, color: "#91b7de", fontWeight: 800 }}>{String(value)}</span>
-      </div>
-      <input onFocus={onFocus} type="range" min={min} max={max} step={step} value={Number.isFinite(value) ? value : 0} onChange={e => onChange(Number(e.target.value))} style={{ width: "100%", accentColor: "#378ADD" }} />
-    </div>
-  );
-}
-
-function DevToggle({ label, checked, onChange, onFocus }) {
-  return (
-    <button onFocus={onFocus} onClick={() => onChange(!checked)} style={{ width: "100%", background: "#091425", border: "1px solid #1e3a5a", borderRadius: 8, padding: "8px 10px", display: "flex", justifyContent: "space-between", alignItems: "center", color: "#b6d3ef", fontSize: 12, cursor: "pointer" }}>
-      <span>{label}</span>
-      <span style={{ fontWeight: 800, color: checked ? "#5fd68a" : "#7b8ea6" }}>{checked ? "ON" : "OFF"}</span>
-    </button>
-  );
-}
-
-function DevSelect({ label, value, options, onChange, onFocus }) {
-  return (
-    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <span style={{ fontSize: 10, color: "#6f8cad", textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 }}>{label}</span>
-      <select onFocus={onFocus} value={value} onChange={e => onChange(e.target.value)} style={{ ...inp, padding: "6px 8px", fontSize: 12 }}>
-        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-      </select>
-    </label>
-  );
-}
-
-function DevColorInput({ label, value, onChange, onFocus }) {
-  return (
-    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <span style={{ fontSize: 10, color: "#6f8cad", textTransform: "uppercase", letterSpacing: 0.7, fontWeight: 700 }}>{label}</span>
-      <div style={{ display: "flex", gap: 6 }}>
-        <input onFocus={onFocus} type="color" value={value || "#000000"} onChange={e => onChange(e.target.value)} style={{ width: 36, height: 30, border: "1px solid #1e3a5a", borderRadius: 6, background: "transparent", padding: 2 }} />
-        <input onFocus={onFocus} type="text" value={value || ""} onChange={e => onChange(e.target.value)} style={{ ...inp, padding: "6px 8px", fontSize: 12 }} />
-      </div>
-    </label>
-  );
-}
-
-function DevButtonRow({ children }) {
-  return <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{children}</div>;
-}
-
-function DevResetButton({ label, onClick, danger = false }) {
-  return (
-    <button onClick={onClick} style={{ background: danger ? "rgba(226,75,74,0.12)" : "rgba(55,138,221,0.12)", color: danger ? "#ffb4b4" : "#a7d2ff", border: "1px solid " + (danger ? "rgba(226,75,74,0.35)" : "rgba(55,138,221,0.35)"), borderRadius: 8, padding: "7px 10px", fontSize: 11, fontWeight: 800, cursor: "pointer" }}>
-      {label}
-    </button>
-  );
-}
-
-function activeLayoutItemFromPath(path) {
-  if (!path?.startsWith("layout.")) return "";
-  const parts = path.split(".");
-  return parts.length >= 2 ? parts[1] : "";
-}
-
-function DevBattlefieldPreview({ layout, visual, activePath, onSelect, onPatch, nudgeStep = 0.25 }) {
-  const selectedItem = activeLayoutItemFromPath(activePath);
-  const previewRef = useRef(null);
-  const dragRef = useRef(null);
-  const boardScale = Number.isFinite(visual?.boardScale) ? visual.boardScale : 1;
-  const boardPadding = Number.isFinite(visual?.boardPadding) ? visual.boardPadding : 0;
-  const showLabels = !!visual?.showZoneLabels;
-  const showGrid = !!visual?.previewGrid;
-  const snap = !!visual?.snapToGrid;
-  const snapStep = 1;
-
-  const meta = {
-    playerHero: { mode: "center", sizeField: "size", scaleField: "scale" },
-    enemyHero: { mode: "center", sizeField: "size", scaleField: "scale" },
-    playerBattlefield: { mode: "rect", widthField: "width", heightField: "height" },
-    enemyBattlefield: { mode: "rect", widthField: "width", heightField: "height" },
-    playerHand: { mode: "centerRect", widthField: "width", extraResizeField: "spread" },
-    enemyHand: { mode: "centerRect", widthField: "width", extraResizeField: "spread" },
-    endTurnBtn: { mode: "centerRect", scaleField: "scale" },
-    auraIndicator: { mode: "centerRect", scaleField: "scale" },
-    deckHandIndicator: { mode: "centerRect", scaleField: "scale" },
-  };
-
-  function clamp(v, min, max) {
-    return Math.max(min, Math.min(max, v));
-  }
-
-  function q(v) {
-    const n = Number(v) || 0;
-    return snap ? Math.round(n / snapStep) * snapStep : Number(n.toFixed(2));
-  }
-
-  function setValue(path, value) {
-    onPatch(path, q(value));
-  }
-
-  function getBox(item) {
-    const d = layout?.[item] || {};
-    if (item === "playerHero" || item === "enemyHero") {
-      const base = Math.max(6, ((d.size || 120) / 120) * 10) * (d.scale || 1);
-      return { x: d.x || 50, y: d.y || 50, width: base, height: base, circle: true };
-    }
-    if (item === "playerBattlefield" || item === "enemyBattlefield") {
-      // Return top-LEFT (x, y) — NOT the center.
-      // The game renders these zones with position:absolute; top:Y%; height:H%; left:0; right:0.
-      // Using center coordinates here (with translate(-50%,-50%) in itemStyle) caused the zone
-      // to appear offset by height/2 in the preview AND to visually jump every time height changed.
-      // rect:true tells itemStyle to use top-left positioning with no centering transform.
-      const defaultY = item === "playerBattlefield" ? 58 : 28;
-      return { x: d.x ?? 0, y: d.y ?? defaultY, width: d.width ?? 100, height: d.height ?? 22, rect: true };
-    }
-    if (item === "playerHand" || item === "enemyHand") {
-      return { x: d.x || 50, y: d.y || 50, width: Math.max(8, d.width || 100), height: 8 };
-    }
-    if (item === "endTurnBtn") return { x: d.x || 92, y: d.y || 50, width: 10 * (d.scale || 1), height: 7 * (d.scale || 1) };
-    if (item === "auraIndicator") return { x: d.x || 92, y: d.y || 60, width: 10 * (d.scale || 1), height: 5 * (d.scale || 1) };
-    return { x: d.x || 92, y: d.y || 68, width: 12 * (d.scale || 1), height: 6 * (d.scale || 1) };
-  }
-
-  function startDrag(e, item, mode = "move") {
-    e.preventDefault();
-    e.stopPropagation();
-    onSelect(`layout.${item}.x`);
-    const r = previewRef.current?.getBoundingClientRect();
-    if (!r) return;
-    dragRef.current = { item, mode, rect: r, startX: e.clientX, startY: e.clientY, start: getBox(item) };
-    window.addEventListener("pointermove", onDragMove);
-    window.addEventListener("pointerup", stopDrag);
-  }
-
-  function onDragMove(e) {
-    const s = dragRef.current;
-    if (!s) return;
-    const dx = ((e.clientX - s.startX) / s.rect.width) * 100;
-    const dy = ((e.clientY - s.startY) / s.rect.height) * 100;
-    if (s.mode === "move") {
-      // Battlefield zones are full-width in the game (left:0; right:0) so .x is unused.
-      // Writing to .x during drag would corrupt getBox's next computation because getBox
-      // now reads d.x as the left edge, not the center.  Skip .x for battlefields.
-      if (s.item !== "playerBattlefield" && s.item !== "enemyBattlefield") {
-        setValue(`layout.${s.item}.x`, clamp(s.start.x + dx, 0, 100));
-      }
-      setValue(`layout.${s.item}.y`, clamp(s.start.y + dy, 0, 100));
-      return;
-    }
-    if (s.mode === "resize") {
-      const m = meta[s.item];
-      if (m.sizeField) {
-        const current = layout?.[s.item]?.[m.sizeField] || 120;
-        setValue(`layout.${s.item}.${m.sizeField}`, clamp(current + dx * 3, 20, 400));
-      } else if (m.widthField && m.heightField) {
-        setValue(`layout.${s.item}.${m.widthField}`, clamp(s.start.width + dx, 1, 100));
-        setValue(`layout.${s.item}.${m.heightField}`, clamp(s.start.height + dy, 1, 100));
-      } else if (m.widthField) {
-        setValue(`layout.${s.item}.${m.widthField}`, clamp(s.start.width + dx, 1, 100));
-        if (m.extraResizeField) {
-          const spread = layout?.[s.item]?.[m.extraResizeField] ?? 1;
-          setValue(`layout.${s.item}.${m.extraResizeField}`, clamp(spread + dx * 0.02, 0.2, 2));
-        }
-      } else if (m.scaleField) {
-        const sc = layout?.[s.item]?.[m.scaleField] ?? 1;
-        setValue(`layout.${s.item}.${m.scaleField}`, clamp(sc + dx * 0.02, 0.3, 3));
-      }
-    }
-  }
-
-  function stopDrag() {
-    dragRef.current = null;
-    window.removeEventListener("pointermove", onDragMove);
-    window.removeEventListener("pointerup", stopDrag);
-  }
-
-  useEffect(() => {
-    return () => stopDrag();
-  }, []);
-
-  function onPreviewKeyDown(e) {
-    if (!selectedItem) return;
-    if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) return;
-    e.preventDefault();
-    const curX = layout?.[selectedItem]?.x ?? 50;
-    const curY = layout?.[selectedItem]?.y ?? 50;
-    if (e.key === "ArrowLeft") setValue(`layout.${selectedItem}.x`, curX - nudgeStep);
-    if (e.key === "ArrowRight") setValue(`layout.${selectedItem}.x`, curX + nudgeStep);
-    if (e.key === "ArrowUp") setValue(`layout.${selectedItem}.y`, curY - nudgeStep);
-    if (e.key === "ArrowDown") setValue(`layout.${selectedItem}.y`, curY + nudgeStep);
-  }
-
-  // isRect: box.x/y is the TOP-LEFT corner — no centering transform applied.
-  //         Used for battlefield zones to exactly match the game's position:absolute; top:Y%; height:H% layout.
-  // !isRect: box.x/y is the CENTER of the element — transform:translate(-50%,-50%) applied.
-  //          Used for heroes, hands, controls which are centered on their anchor point.
-  function itemStyle(box, selected, isCircle, isRect) {
-    return {
-      position: "absolute",
-      left: `${box.x}%`,
-      top: `${box.y}%`,
-      width: `${box.width}%`,
-      height: `${box.height}%`,
-      transform: isRect ? "none" : "translate(-50%, -50%)",
-      borderRadius: isCircle ? 999 : 8,
-      border: selected ? "1px solid #fac775" : "1px solid rgba(135,184,235,0.85)",
-      boxShadow: selected ? "0 0 0 2px rgba(250,199,117,0.55), 0 0 18px rgba(250,199,117,0.35)" : "none",
-      background: selected ? "rgba(250,199,117,0.2)" : "rgba(55,138,221,0.18)",
-      boxSizing: "border-box",
-      cursor: "grab",
-    };
-  }
-
-  function renderItem(item, tint = null) {
-    const b = getBox(item);
-    const selected = selectedItem === item;
-    return (
-      <div
-        key={item}
-        onPointerDown={(e) => startDrag(e, item, "move")}
-        onClick={() => onSelect(`layout.${item}.x`)}
-        style={{ ...itemStyle(b, selected, !!b.circle, !!b.rect), ...(tint ? { background: tint } : {}) }}
-      >
-        {(item === selectedItem) && (
-          <div
-            onPointerDown={(e) => startDrag(e, item, "resize")}
-            style={{ position: "absolute", right: -5, bottom: -5, width: 10, height: 10, borderRadius: 3, background: "#fac775", border: "1px solid #3b2a0b", cursor: "nwse-resize" }}
-          />
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ border: "1px solid #1a2e49", borderRadius: 10, background: "linear-gradient(180deg,#071121,#050b16)", padding: 10 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, fontSize: 11 }}>
-        <span style={{ color: "#91b7de", fontWeight: 800 }}>Mini Battlefield Preview</span>
-        <span style={{ color: "#6f8cad" }}>Selected: {selectedItem || "none"}</span>
-      </div>
-      <div ref={previewRef} tabIndex={0} onKeyDown={onPreviewKeyDown} style={{ position: "relative", width: "100%", aspectRatio: "16 / 9", borderRadius: 8, overflow: "hidden", border: "1px solid #12243b", background: "radial-gradient(circle at 50% 45%, rgba(30,66,110,0.35), rgba(4,10,20,0.95))", outline: "none" }}>
-        <div style={{ position: "absolute", inset: boardPadding, transform: `scale(${boardScale})`, transformOrigin: "center center" }}>
-          {showGrid && <div style={{ position: "absolute", inset: 0, backgroundImage: "linear-gradient(rgba(120,160,220,0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(120,160,220,0.12) 1px, transparent 1px)", backgroundSize: "10% 10%", pointerEvents: "none" }} />}
-          {renderItem("enemyBattlefield")}
-          {renderItem("playerBattlefield")}
-          {renderItem("enemyHand")}
-          {renderItem("playerHand")}
-          {renderItem("enemyHero")}
-          {renderItem("playerHero")}
-          {renderItem("endTurnBtn", "rgba(29,158,117,0.25)")}
-          {renderItem("auraIndicator", "rgba(55,138,221,0.28)")}
-          {renderItem("deckHandIndicator", "rgba(102,140,190,0.25)")}
-          {showLabels && (
-            <>
-              <div style={{ position: "absolute", left: 6, top: "2%", fontSize: 9, color: "#8eb5de" }}>Enemy Hand</div>
-              <div style={{ position: "absolute", left: 6, top: `${(layout.enemyBattlefield?.y || 28) - 3}%`, fontSize: 9, color: "#8eb5de" }}>Enemy Battlefield</div>
-              <div style={{ position: "absolute", left: 6, top: `${(layout.playerBattlefield?.y || 58) - 3}%`, fontSize: 9, color: "#8eb5de" }}>Player Battlefield</div>
-              <div style={{ position: "absolute", left: 6, top: `${(layout.playerHand?.y || 92) - 3}%`, fontSize: 9, color: "#8eb5de" }}>Player Hand</div>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function DevTabSection({ onDevSettingsChange }) {
-  const [cfg, setCfg] = useState(() => getDevConfig());
-  const [activePath, setActivePath] = useState("layout.playerHero.x");
-  const [nudgeMode, setNudgeMode] = useState("small");
-  const [saveStatus, setSaveStatus] = useState("ready");
-  const [wiredHints] = useState([
-    "Some new layout keys (for example width/spread/cardScale/scale) may not be fully rendered in all gameplay components yet.",
-    "Preset selectors are schema-ready and saved, but preset-application logic is not implemented yet.",
-  ]);
-
-  useEffect(() => {
-    const unsub = subscribe(() => {
-      setCfg(getDevConfig());
-      setSaveStatus("saved");
-      setTimeout(() => setSaveStatus("ready"), 800);
-    });
-    return unsub;
-  }, []);
-
-  useEffect(() => {
-    const playerPortrait = (() => { try { return localStorage.getItem("devHeroPortrait_player") || null; } catch { return null; } })();
-    const enemyPortrait = (() => { try { return localStorage.getItem("devHeroPortrait_enemy") || null; } catch { return null; } })();
-    onDevSettingsChange?.({ playerPortrait, enemyPortrait });
-  }, [onDevSettingsChange, cfg]);
-
-  function updatePath(path, value) {
-    setActivePath(path);
-    setSaveStatus("saving");
-    // Soft overlap constraint: keep a ≥5% gap between enemy BF bottom and player BF top.
-    let constrainedValue = value;
-    const currentCfg = getDevConfig();
-    const pBF = currentCfg.layout?.playerBattlefield || {};
-    const eBF = currentCfg.layout?.enemyBattlefield || {};
-    if (path === "layout.playerBattlefield.y") {
-      const minY = (eBF.y ?? 28) + (eBF.height ?? 22) + 5;
-      constrainedValue = Math.max(value, minY);
-    } else if (path === "layout.enemyBattlefield.y") {
-      const maxY = (pBF.y ?? 58) - (eBF.height ?? 22) - 5;
-      constrainedValue = Math.min(value, maxY);
-    } else if (path === "layout.enemyBattlefield.height") {
-      const maxH = (pBF.y ?? 58) - (eBF.y ?? 28) - 5;
-      constrainedValue = Math.min(value, maxH);
-    } else if (path === "layout.playerBattlefield.height") {
-      const maxH = 100 - (pBF.y ?? 58) - 2;
-      constrainedValue = Math.min(value, maxH);
-    }
-    setDevConfig(patchFromPath(path, constrainedValue));
-  }
-
-  function resetScope(scopeKey) {
-    if (!DEFAULT_DEV_CONFIG[scopeKey]) return;
-    setDevConfig({ [scopeKey]: DEFAULT_DEV_CONFIG[scopeKey] });
-  }
-
-  const l = cfg.layout || {};
-  const v = cfg.visual || {};
-  const ct = cfg.cardTemplate || {};
-  const p = cfg.presets || {};
-  const selectedLayoutItem = activeLayoutItemFromPath(activePath) || "playerHero";
-  const nudgeStep = nudgeMode === "small" ? 0.25 : 1;
-  const currentValue = getPath(cfg, activePath);
-  const [templateCompare, setTemplateCompare] = useState(true);
-  const lsStatus = (() => {
+  async function handlePortraitFile(file) {
+    if (!file) return;
     try {
-      const raw = localStorage.getItem("chronically_devConfig");
-      return raw ? `saved (${raw.length} bytes)` : "not saved";
-    } catch {
-      return "unavailable";
+      const url = await readFileAsDataURL(file);
+      setHeroPortraitOverride(hero.id, url);
+      setPortraits(p => ({ ...p, [hero.id]: url }));
+    } catch (err) {
+      console.error("portrait upload failed", err);
     }
-  })();
-
-  const layoutItemLabels = {
-    playerHero: "Player Hero",
-    enemyHero: "Enemy Hero",
-    playerBattlefield: "Player Battlefield",
-    enemyBattlefield: "Enemy Battlefield",
-    playerHand: "Player Hand",
-    enemyHand: "Enemy Hand",
-    endTurnBtn: "End Turn Button",
-    auraIndicator: "Aura Indicator",
-    deckHandIndicator: "Deck/Hand Indicator",
-  };
-
-  const sampleMinionCard = {
-    id: "dev_preview_minion",
-    uid: "dev_preview_minion_uid",
-    name: "Arena Vanguard",
-    cost: 4,
-    atk: 5,
-    hp: 4,
-    rarity: "epic",
-    type: "minion",
-    class: "neutral",
-    emoji: "⚔",
-    effectText: "Battlecry: Gain +1/+1 if you played a spell this turn.",
-    keywords: ["battlecry", "rush"],
-    desc: "Battlecry: Gain +1/+1 if you played a spell this turn.",
-  };
-  const sampleSpellCard = {
-    id: "dev_preview_spell",
-    uid: "dev_preview_spell_uid",
-    name: "Arc Surge",
-    cost: 3,
-    rarity: "rare",
-    type: "spell",
-    class: "tech",
-    emoji: "⚡",
-    effectText: "Deal 3 damage. Draw 1 card if your hand is low.",
-    keywords: ["combo"],
-    desc: "Deal 3 damage. Draw 1 card if your hand is low.",
-  };
-
-  const selectedGroup = selectedLayoutItem.includes("Hero")
-    ? "heroes"
-    : selectedLayoutItem.includes("Battlefield")
-      ? "battlefields"
-      : selectedLayoutItem.includes("Hand") && !selectedLayoutItem.includes("Indicator")
-        ? "hands"
-        : "controls";
-
-  function setLayoutValue(item, field, value) {
-    updatePath(`layout.${item}.${field}`, value);
   }
 
-  function nudge(item, axis, delta) {
-    const current = Number(l?.[item]?.[axis] ?? 0);
-    setLayoutValue(item, axis, Number((current + delta).toFixed(3)));
+  function onPortraitReset() {
+    resetHeroPortraitOverride(hero.id);
+    setPortraits(p => ({ ...p, [hero.id]: hero.portrait || null }));
   }
 
-  function resetSelectedItem() {
-    const base = DEFAULT_DEV_CONFIG?.layout?.[selectedLayoutItem];
-    if (!base) return;
-    setDevConfig({ layout: { [selectedLayoutItem]: base } });
+  function addCardToDeck(cardId) {
+    if (heroDeck.length >= DECK_SIZE_TARGET) return;
+    const next = [...heroDeck, cardId];
+    setHeroDeckIds(hero.id, next);
+    setDecks(d => ({ ...d, [hero.id]: next }));
+    getSFX().cardSelect();
   }
 
-  function resetSelectedGroup() {
-    const byGroup = {
-      heroes: ["playerHero", "enemyHero"],
-      battlefields: ["playerBattlefield", "enemyBattlefield"],
-      hands: ["playerHand", "enemyHand"],
-      controls: ["endTurnBtn", "auraIndicator", "deckHandIndicator"],
-    };
-    const keys = byGroup[selectedGroup] || [];
-    const patch = {};
-    keys.forEach((k) => { patch[k] = DEFAULT_DEV_CONFIG.layout[k]; });
-    setDevConfig({ layout: patch });
+  function removeCardFromDeck(idx) {
+    const next = heroDeck.filter((_, i) => i !== idx);
+    setHeroDeckIds(hero.id, next);
+    setDecks(d => ({ ...d, [hero.id]: next }));
   }
+
+  function resetDeck() {
+    resetHeroDeckIds(hero.id);
+    const fallback = HEROES.find(h => h.id === hero.id)?.deckIds || [];
+    setDecks(d => ({ ...d, [hero.id]: [...fallback] }));
+  }
+
+  // Deck stats
+  const deckStats = useMemo(() => {
+    const curve = [0, 0, 0, 0, 0, 0, 0, 0]; // 0..7+
+    let minions = 0, spells = 0;
+    heroDeck.forEach(id => {
+      const c = cardById.get(id);
+      if (!c) return;
+      const bucket = Math.min(7, Math.max(0, c.cost || 0));
+      curve[bucket]++;
+      if (c.type === "spell") spells++; else minions++;
+    });
+    return { curve, minions, spells, total: heroDeck.length };
+  }, [heroDeck, cardById]);
+
+  // Card picker filter
+  const pickerCards = useMemo(() => {
+    const q = cardSearch.trim().toLowerCase();
+    return lib.filter(c => {
+      if (classFilter !== "all") {
+        const ck = (c.class || "neutral").toLowerCase();
+        if (classFilter === "neutral" && ck !== "neutral") return false;
+        if (classFilter === "usa" && !ck.startsWith("usa")) return false;
+        if (classFilter === "tech" && !ck.startsWith("tech")) return false;
+      }
+      if (!q) return true;
+      return (c.name || "").toLowerCase().includes(q) || (c.id || "").toLowerCase().includes(q);
+    }).sort((a, b) => (a.cost || 0) - (b.cost || 0) || a.name.localeCompare(b.name));
+  }, [lib, cardSearch, classFilter]);
+
+  const portraitSrc = portraits[hero.id] || null;
+  const hasPortraitOverride = !!getHeroPortraitOverride(hero.id);
+  const defaultDeckIds = HEROES.find(h => h.id === hero.id)?.deckIds || [];
+  const hasDeckOverride = JSON.stringify(defaultDeckIds) !== JSON.stringify(heroDeck);
 
   return (
-    <div style={{ maxWidth: 980, margin: "0 auto", display: "flex", flexDirection: "column", gap: 10 }}>
-      <DevBattlefieldPreview
-        layout={l}
-        visual={v}
-        activePath={activePath}
-        onSelect={(path) => setActivePath(path)}
-        onPatch={(path, value) => updatePath(path, value)}
-        nudgeStep={nudgeStep}
-      />
+    <div style={{ maxWidth: 1180, margin: "0 auto", display: "grid", gridTemplateColumns: "220px 1fr 320px", gap: 16 }}>
+      {/* ── Hero list ── */}
+      <div style={{ border: "1px solid #1e3a5a", background: "#060c18", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 6, height: "fit-content" }}>
+        <div style={sectionHdr}>Heroes</div>
+        {HEROES.map(h => {
+          const active = h.id === hero.id;
+          const portrait = portraits[h.id];
+          return (
+            <button
+              key={h.id}
+              onClick={() => setSelectedHeroId(h.id)}
+              style={{
+                display: "flex", alignItems: "center", gap: 10,
+                textAlign: "left", padding: 8,
+                background: active ? "#0c1a31" : "#07101d",
+                border: active ? "1px solid #378ADD" : "1px solid #102034",
+                borderRadius: 8,
+                cursor: "pointer",
+              }}
+            >
+              <div style={{ width: 42, height: 42, borderRadius: 8, overflow: "hidden", border: "1px solid #1e3a5a", background: "#040810", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>
+                {portrait ? (
+                  <img src={portrait} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={(e) => { e.currentTarget.style.display = "none"; }} />
+                ) : (h.emoji || "?")}
+              </div>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 900, color: active ? "#cfe4ff" : "#aab5c6", letterSpacing: 0.4 }}>{h.name}</div>
+                <div style={{ fontSize: 10, color: "#667790", letterSpacing: 0.4 }}>{h.class || "Neutral"} · {(decks[h.id] || []).length}/{DECK_SIZE_TARGET}</div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
 
-      <DevSection title="Selected Item" subtitle="Focused editing workflow for fast positioning">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-          <DevSelect
-            label="Selected Layout Item"
-            value={selectedLayoutItem}
-            options={Object.keys(layoutItemLabels).map((k) => ({ value: k, label: layoutItemLabels[k] }))}
-            onChange={(val) => setActivePath(`layout.${val}.x`)}
-            onFocus={() => setActivePath(`layout.${selectedLayoutItem}.x`)}
-          />
-          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            <button onClick={() => setNudgeMode("small")} style={{ background: nudgeMode === "small" ? "#19426d" : "#0a1628", color: nudgeMode === "small" ? "#d7ebff" : "#7f9dbf", border: "1px solid #1e3a5a", borderRadius: 6, padding: "6px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Small Step</button>
-            <button onClick={() => setNudgeMode("large")} style={{ background: nudgeMode === "large" ? "#19426d" : "#0a1628", color: nudgeMode === "large" ? "#d7ebff" : "#7f9dbf", border: "1px solid #1e3a5a", borderRadius: 6, padding: "6px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Large Step</button>
-          </div>
-        </div>
-
-        <DevFieldGrid cols={4}>
-          <DevNumberInput label="X" value={l?.[selectedLayoutItem]?.x} min={0} max={100} unit="%" onFocus={() => setActivePath(`layout.${selectedLayoutItem}.x`)} onChange={(val) => setLayoutValue(selectedLayoutItem, "x", val)} />
-          <DevNumberInput label="Y" value={l?.[selectedLayoutItem]?.y} min={0} max={100} unit="%" onFocus={() => setActivePath(`layout.${selectedLayoutItem}.y`)} onChange={(val) => setLayoutValue(selectedLayoutItem, "y", val)} />
-          {selectedLayoutItem.includes("Hero") && <DevNumberInput label="Size" value={l?.[selectedLayoutItem]?.size} min={20} max={400} unit="px" onFocus={() => setActivePath(`layout.${selectedLayoutItem}.size`)} onChange={(val) => setLayoutValue(selectedLayoutItem, "size", val)} />}
-          {selectedLayoutItem.includes("Battlefield") && <DevNumberInput label="Width" value={l?.[selectedLayoutItem]?.width} min={1} max={100} unit="%" onFocus={() => setActivePath(`layout.${selectedLayoutItem}.width`)} onChange={(val) => setLayoutValue(selectedLayoutItem, "width", val)} />}
-          {selectedLayoutItem.includes("Battlefield") && <DevNumberInput label="Height" value={l?.[selectedLayoutItem]?.height} min={1} max={100} unit="%" onFocus={() => setActivePath(`layout.${selectedLayoutItem}.height`)} onChange={(val) => setLayoutValue(selectedLayoutItem, "height", val)} />}
-          {selectedLayoutItem.includes("Hand") && !selectedLayoutItem.includes("Indicator") && <DevNumberInput label="Width" value={l?.[selectedLayoutItem]?.width} min={1} max={100} unit="%" onFocus={() => setActivePath(`layout.${selectedLayoutItem}.width`)} onChange={(val) => setLayoutValue(selectedLayoutItem, "width", val)} />}
-          {selectedLayoutItem.includes("Hand") && !selectedLayoutItem.includes("Indicator") && <DevSlider label="Spread" value={l?.[selectedLayoutItem]?.spread ?? 1} min={0.2} max={2} step={0.05} onFocus={() => setActivePath(`layout.${selectedLayoutItem}.spread`)} onChange={(val) => setLayoutValue(selectedLayoutItem, "spread", val)} />}
-          {selectedLayoutItem.includes("Hand") && !selectedLayoutItem.includes("Indicator") && <DevSlider label="Card Scale" value={l?.[selectedLayoutItem]?.cardScale ?? 1} min={0.5} max={2} step={0.05} onFocus={() => setActivePath(`layout.${selectedLayoutItem}.cardScale`)} onChange={(val) => setLayoutValue(selectedLayoutItem, "cardScale", val)} />}
-          {(selectedLayoutItem === "endTurnBtn" || selectedLayoutItem === "auraIndicator" || selectedLayoutItem === "deckHandIndicator") && <DevSlider label="Scale" value={l?.[selectedLayoutItem]?.scale ?? 1} min={0.3} max={3} step={0.05} onFocus={() => setActivePath(`layout.${selectedLayoutItem}.scale`)} onChange={(val) => setLayoutValue(selectedLayoutItem, "scale", val)} />}
-        </DevFieldGrid>
-
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 34px)", gap: 4 }}>
-            <div />
-            <button onClick={() => nudge(selectedLayoutItem, "y", -nudgeStep)} style={{ background: "#0a1628", color: "#a8c8ea", border: "1px solid #1e3a5a", borderRadius: 6, height: 30, cursor: "pointer" }}>↑</button>
-            <div />
-            <button onClick={() => nudge(selectedLayoutItem, "x", -nudgeStep)} style={{ background: "#0a1628", color: "#a8c8ea", border: "1px solid #1e3a5a", borderRadius: 6, height: 30, cursor: "pointer" }}>←</button>
-            <button onClick={() => {}} style={{ background: "#10243d", color: "#8fb4dc", border: "1px solid #1e3a5a", borderRadius: 6, height: 30, cursor: "default" }}>{nudgeStep}</button>
-            <button onClick={() => nudge(selectedLayoutItem, "x", nudgeStep)} style={{ background: "#0a1628", color: "#a8c8ea", border: "1px solid #1e3a5a", borderRadius: 6, height: 30, cursor: "pointer" }}>→</button>
-            <div />
-            <button onClick={() => nudge(selectedLayoutItem, "y", nudgeStep)} style={{ background: "#0a1628", color: "#a8c8ea", border: "1px solid #1e3a5a", borderRadius: 6, height: 30, cursor: "pointer" }}>↓</button>
-            <div />
-          </div>
-          <DevButtonRow>
-            <DevResetButton label="Reset Selected Item" onClick={resetSelectedItem} />
-            <DevResetButton label={`Reset ${selectedGroup}`} onClick={resetSelectedGroup} />
-          </DevButtonRow>
-        </div>
-      </DevSection>
-
-      <DevSection title="Layout (All Fields)" subtitle="Full field list for reference and exact edits" defaultOpen={false}>
-        <DevFieldGrid cols={3}>
-          <DevNumberInput label="Player Hero X" value={l.playerHero?.x} min={0} max={100} unit="%" onFocus={() => setActivePath("layout.playerHero.x")} onChange={(val) => updatePath("layout.playerHero.x", val)} />
-          <DevNumberInput label="Player Hero Y" value={l.playerHero?.y} min={0} max={100} unit="%" onFocus={() => setActivePath("layout.playerHero.y")} onChange={(val) => updatePath("layout.playerHero.y", val)} />
-          <DevNumberInput label="Player Hero Size" value={l.playerHero?.size} min={40} max={320} unit="px" onFocus={() => setActivePath("layout.playerHero.size")} onChange={(val) => updatePath("layout.playerHero.size", val)} />
-          <DevNumberInput label="Enemy Hero X" value={l.enemyHero?.x} min={0} max={100} unit="%" onFocus={() => setActivePath("layout.enemyHero.x")} onChange={(val) => updatePath("layout.enemyHero.x", val)} />
-          <DevNumberInput label="Enemy Hero Y" value={l.enemyHero?.y} min={0} max={100} unit="%" onFocus={() => setActivePath("layout.enemyHero.y")} onChange={(val) => updatePath("layout.enemyHero.y", val)} />
-          <DevNumberInput label="Enemy Hero Size" value={l.enemyHero?.size} min={40} max={320} unit="px" onFocus={() => setActivePath("layout.enemyHero.size")} onChange={(val) => updatePath("layout.enemyHero.size", val)} />
-        </DevFieldGrid>
-
-        {(() => {
-          const pY = l.playerBattlefield?.y ?? 58;
-          const eY = l.enemyBattlefield?.y ?? 28;
-          const eH = l.enemyBattlefield?.height ?? 22;
-          const zonesOverlapping = pY < eY + eH + 5;
-          return zonesOverlapping ? (
-            <div style={{ color: "#f59e0b", background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.4)", borderRadius: 6, padding: "6px 10px", marginBottom: 8, fontSize: 12, fontWeight: 600 }}>
-              ⚠ Zones overlapping — player BF top ({pY}%) is within 5% of enemy BF bottom ({eY + eH}%)
+      {/* ── Hero editor panel ── */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {/* Portrait editor */}
+        <div style={{ border: "1px solid #1e3a5a", background: "#060c18", borderRadius: 10, padding: 14 }}>
+          <div style={sectionHdr}>Portrait — {hero.name}</div>
+          <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
+            <div style={{ width: 140, height: 180, borderRadius: 12, overflow: "hidden", border: "2px solid #1e3a5a", background: "#040810", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 64, flexShrink: 0 }}>
+              {portraitSrc ? (
+                <img src={portraitSrc} alt={hero.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              ) : (hero.emoji || "?")}
             </div>
-          ) : null;
-        })()}
-        <DevFieldGrid cols={4}>
-          <DevNumberInput label="Player BF X" value={l.playerBattlefield?.x} min={0} max={100} unit="%" onFocus={() => setActivePath("layout.playerBattlefield.x")} onChange={(val) => updatePath("layout.playerBattlefield.x", val)} />
-          <DevNumberInput label="Player BF Y" value={l.playerBattlefield?.y} min={0} max={100} unit="%" onFocus={() => setActivePath("layout.playerBattlefield.y")} onChange={(val) => updatePath("layout.playerBattlefield.y", val)} />
-          <DevNumberInput label="Player BF Width" value={l.playerBattlefield?.width} min={1} max={100} unit="%" onFocus={() => setActivePath("layout.playerBattlefield.width")} onChange={(val) => updatePath("layout.playerBattlefield.width", val)} />
-          <DevNumberInput label="Player BF Height" value={l.playerBattlefield?.height} min={1} max={100} unit="%" onFocus={() => setActivePath("layout.playerBattlefield.height")} onChange={(val) => updatePath("layout.playerBattlefield.height", val)} />
-          <DevNumberInput label="Enemy BF X" value={l.enemyBattlefield?.x} min={0} max={100} unit="%" onFocus={() => setActivePath("layout.enemyBattlefield.x")} onChange={(val) => updatePath("layout.enemyBattlefield.x", val)} />
-          <DevNumberInput label="Enemy BF Y" value={l.enemyBattlefield?.y} min={0} max={100} unit="%" onFocus={() => setActivePath("layout.enemyBattlefield.y")} onChange={(val) => updatePath("layout.enemyBattlefield.y", val)} />
-          <DevNumberInput label="Enemy BF Width" value={l.enemyBattlefield?.width} min={1} max={100} unit="%" onFocus={() => setActivePath("layout.enemyBattlefield.width")} onChange={(val) => updatePath("layout.enemyBattlefield.width", val)} />
-          <DevNumberInput label="Enemy BF Height" value={l.enemyBattlefield?.height} min={1} max={100} unit="%" onFocus={() => setActivePath("layout.enemyBattlefield.height")} onChange={(val) => updatePath("layout.enemyBattlefield.height", val)} />
-        </DevFieldGrid>
-
-        <DevFieldGrid cols={3}>
-          <DevNumberInput label="Player Hand X" value={l.playerHand?.x} min={0} max={100} unit="%" onFocus={() => setActivePath("layout.playerHand.x")} onChange={(val) => updatePath("layout.playerHand.x", val)} />
-          <DevNumberInput label="Player Hand Y" value={l.playerHand?.y} min={0} max={100} unit="%" onFocus={() => setActivePath("layout.playerHand.y")} onChange={(val) => updatePath("layout.playerHand.y", val)} />
-          <DevNumberInput label="Player Hand Width" value={l.playerHand?.width} min={1} max={100} unit="%" onFocus={() => setActivePath("layout.playerHand.width")} onChange={(val) => updatePath("layout.playerHand.width", val)} />
-          <DevSlider label="Player Hand Fan Angle" value={l.playerHand?.fanAngle ?? 0} min={0} max={20} step={0.5} onFocus={() => setActivePath("layout.playerHand.fanAngle")} onChange={(val) => updatePath("layout.playerHand.fanAngle", val)} />
-          <DevSlider label="Player Hand Spread" value={l.playerHand?.spread ?? 1} min={0.2} max={2} step={0.05} onFocus={() => setActivePath("layout.playerHand.spread")} onChange={(val) => updatePath("layout.playerHand.spread", val)} />
-          <DevSlider label="Player Hand Card Scale" value={l.playerHand?.cardScale ?? 1} min={0.5} max={2} step={0.05} onFocus={() => setActivePath("layout.playerHand.cardScale")} onChange={(val) => updatePath("layout.playerHand.cardScale", val)} />
-          <DevNumberInput label="Enemy Hand X" value={l.enemyHand?.x} min={0} max={100} unit="%" onFocus={() => setActivePath("layout.enemyHand.x")} onChange={(val) => updatePath("layout.enemyHand.x", val)} />
-          <DevNumberInput label="Enemy Hand Y" value={l.enemyHand?.y} min={0} max={100} unit="%" onFocus={() => setActivePath("layout.enemyHand.y")} onChange={(val) => updatePath("layout.enemyHand.y", val)} />
-          <DevNumberInput label="Enemy Hand Width" value={l.enemyHand?.width} min={1} max={100} unit="%" onFocus={() => setActivePath("layout.enemyHand.width")} onChange={(val) => updatePath("layout.enemyHand.width", val)} />
-          <DevSlider label="Enemy Hand Fan Angle" value={l.enemyHand?.fanAngle ?? 0} min={0} max={20} step={0.5} onFocus={() => setActivePath("layout.enemyHand.fanAngle")} onChange={(val) => updatePath("layout.enemyHand.fanAngle", val)} />
-          <DevSlider label="Enemy Hand Spread" value={l.enemyHand?.spread ?? 1} min={0.2} max={2} step={0.05} onFocus={() => setActivePath("layout.enemyHand.spread")} onChange={(val) => updatePath("layout.enemyHand.spread", val)} />
-          <DevSlider label="Enemy Hand Card Scale" value={l.enemyHand?.cardScale ?? 1} min={0.5} max={2} step={0.05} onFocus={() => setActivePath("layout.enemyHand.cardScale")} onChange={(val) => updatePath("layout.enemyHand.cardScale", val)} />
-        </DevFieldGrid>
-
-        <DevFieldGrid cols={3}>
-          <DevNumberInput label="End Turn X" value={l.endTurnBtn?.x} min={0} max={100} unit="%" onFocus={() => setActivePath("layout.endTurnBtn.x")} onChange={(val) => updatePath("layout.endTurnBtn.x", val)} />
-          <DevNumberInput label="End Turn Y" value={l.endTurnBtn?.y} min={0} max={100} unit="%" onFocus={() => setActivePath("layout.endTurnBtn.y")} onChange={(val) => updatePath("layout.endTurnBtn.y", val)} />
-          <DevSlider label="End Turn Scale" value={l.endTurnBtn?.scale ?? 1} min={0.5} max={2} step={0.05} onFocus={() => setActivePath("layout.endTurnBtn.scale")} onChange={(val) => updatePath("layout.endTurnBtn.scale", val)} />
-          <DevNumberInput label="Aura X" value={l.auraIndicator?.x} min={0} max={100} unit="%" onFocus={() => setActivePath("layout.auraIndicator.x")} onChange={(val) => updatePath("layout.auraIndicator.x", val)} />
-          <DevNumberInput label="Aura Y" value={l.auraIndicator?.y} min={0} max={100} unit="%" onFocus={() => setActivePath("layout.auraIndicator.y")} onChange={(val) => updatePath("layout.auraIndicator.y", val)} />
-          <DevSlider label="Aura Scale" value={l.auraIndicator?.scale ?? 1} min={0.5} max={2} step={0.05} onFocus={() => setActivePath("layout.auraIndicator.scale")} onChange={(val) => updatePath("layout.auraIndicator.scale", val)} />
-          <DevNumberInput label="Deck/Hand X" value={l.deckHandIndicator?.x} min={0} max={100} unit="%" onFocus={() => setActivePath("layout.deckHandIndicator.x")} onChange={(val) => updatePath("layout.deckHandIndicator.x", val)} />
-          <DevNumberInput label="Deck/Hand Y" value={l.deckHandIndicator?.y} min={0} max={100} unit="%" onFocus={() => setActivePath("layout.deckHandIndicator.y")} onChange={(val) => updatePath("layout.deckHandIndicator.y", val)} />
-          <DevSlider label="Deck/Hand Scale" value={l.deckHandIndicator?.scale ?? 1} min={0.5} max={2} step={0.05} onFocus={() => setActivePath("layout.deckHandIndicator.scale")} onChange={(val) => updatePath("layout.deckHandIndicator.scale", val)} />
-        </DevFieldGrid>
-      </DevSection>
-
-      <DevSection title="Card Template" subtitle="Icons, colors, typography, and panel styling" defaultOpen={false}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 11, color: "#8fb4dc" }}>Live Card Preview (real renderer)</span>
-          <button onClick={() => setTemplateCompare(v => !v)} style={{ background: "#0a1628", color: "#9dc4ea", border: "1px solid #1e3a5a", borderRadius: 6, padding: "6px 10px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
-            {templateCompare ? "Hide Compare" : "Show Compare"}
-          </button>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: templateCompare ? "1fr 1fr" : "1fr", gap: 10 }}>
-          <div style={{ border: "1px solid #173150", borderRadius: 10, background: "#07101d", padding: 10, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-            <div style={{ fontSize: 10, color: "#7fa4cb", fontWeight: 800, letterSpacing: 0.6 }}>Current Template · Minion</div>
-            <TemplateCardFace card={sampleMinionCard} width={190} height={268} />
-          </div>
-          {templateCompare && (
-            <div style={{ border: "1px solid #173150", borderRadius: 10, background: "#07101d", padding: 10, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-              <div style={{ fontSize: 10, color: "#7fa4cb", fontWeight: 800, letterSpacing: 0.6 }}>Alternate Preview · Spell</div>
-              <TemplateCardFace card={sampleSpellCard} width={190} height={268} />
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: 1 }}>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: "none" }}
+                onChange={e => { const f = e.target.files?.[0]; if (f) handlePortraitFile(f); e.target.value = ""; }}
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                style={{ background: "linear-gradient(135deg,#0d2f5c,#1a4a8a)", border: "1px solid #2f5f92", color: "#dcecff", padding: "10px 16px", borderRadius: 8, fontSize: 13, fontWeight: 800, cursor: "pointer", letterSpacing: 0.5 }}
+              >
+                Upload image
+              </button>
+              <button
+                onClick={onPortraitReset}
+                disabled={!hasPortraitOverride}
+                style={{ background: "transparent", border: "1px solid #3a1e1e", color: hasPortraitOverride ? "#e2a4a4" : "#445", padding: "8px 14px", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: hasPortraitOverride ? "pointer" : "not-allowed", letterSpacing: 0.4 }}
+              >
+                Reset to default
+              </button>
+              <div style={{ fontSize: 10, color: "#556", lineHeight: 1.4 }}>
+                Stored per-hero in localStorage. Applies to HeroSelect, in-match portrait, and AI when the same hero is picked as opponent.
+              </div>
             </div>
-          )}
+          </div>
         </div>
 
-        <DevFieldGrid cols={3}>
-          <DevSelect label="Attack Icon" value={ct.attackIcon || "sword"} options={[{ value: "sword", label: "Sword" }, { value: "fist", label: "Fist" }, { value: "lightning", label: "Lightning" }, { value: "fire", label: "Fire" }, { value: "claw", label: "Claw" }]} onFocus={() => setActivePath("cardTemplate.attackIcon")} onChange={(val) => updatePath("cardTemplate.attackIcon", val)} />
-          <DevSelect label="Health Icon" value={ct.healthIcon || "heart"} options={[{ value: "heart", label: "Heart" }, { value: "shield", label: "Shield" }, { value: "diamond", label: "Diamond" }, { value: "orb", label: "Orb" }, { value: "cross", label: "Cross" }]} onFocus={() => setActivePath("cardTemplate.healthIcon")} onChange={(val) => updatePath("cardTemplate.healthIcon", val)} />
-          <DevSelect label="Mana Icon" value={ct.manaIcon || "gem"} options={[{ value: "gem", label: "Gem" }, { value: "star", label: "Star" }, { value: "crystal", label: "Crystal" }, { value: "coin", label: "Coin" }, { value: "rune", label: "Rune" }]} onFocus={() => setActivePath("cardTemplate.manaIcon")} onChange={(val) => updatePath("cardTemplate.manaIcon", val)} />
-          <DevSelect label="Attack Icon Variant" value={ct.attackIconVariant || "default"} options={[{ value: "default", label: "Default" }, { value: "outline", label: "Outline" }, { value: "filled", label: "Filled" }, { value: "rune", label: "Rune" }, { value: "minimal", label: "Minimal" }]} onFocus={() => setActivePath("cardTemplate.attackIconVariant")} onChange={(val) => updatePath("cardTemplate.attackIconVariant", val)} />
-          <DevSelect label="Health Icon Variant" value={ct.healthIconVariant || "default"} options={[{ value: "default", label: "Default" }, { value: "outline", label: "Outline" }, { value: "filled", label: "Filled" }, { value: "rune", label: "Rune" }, { value: "minimal", label: "Minimal" }]} onFocus={() => setActivePath("cardTemplate.healthIconVariant")} onChange={(val) => updatePath("cardTemplate.healthIconVariant", val)} />
-          <DevSelect label="Mana Icon Variant" value={ct.manaIconVariant || "default"} options={[{ value: "default", label: "Default" }, { value: "outline", label: "Outline" }, { value: "filled", label: "Filled" }, { value: "rune", label: "Rune" }, { value: "minimal", label: "Minimal" }]} onFocus={() => setActivePath("cardTemplate.manaIconVariant")} onChange={(val) => updatePath("cardTemplate.manaIconVariant", val)} />
-          <DevColorInput label="Attack Color" value={ct.attackColor} onFocus={() => setActivePath("cardTemplate.attackColor")} onChange={(val) => updatePath("cardTemplate.attackColor", val)} />
-          <DevColorInput label="Health Color" value={ct.healthColor} onFocus={() => setActivePath("cardTemplate.healthColor")} onChange={(val) => updatePath("cardTemplate.healthColor", val)} />
-          <DevColorInput label="Mana Color" value={ct.manaColor} onFocus={() => setActivePath("cardTemplate.manaColor")} onChange={(val) => updatePath("cardTemplate.manaColor", val)} />
-          <DevSelect label="Attack Badge Style" value={ct.attackBadgeStyle || "default"} options={[{ value: "default", label: "Default" }, { value: "solid", label: "Solid" }, { value: "glass", label: "Glass" }, { value: "rune", label: "Rune" }, { value: "minimal", label: "Minimal" }]} onFocus={() => setActivePath("cardTemplate.attackBadgeStyle")} onChange={(val) => updatePath("cardTemplate.attackBadgeStyle", val)} />
-          <DevSelect label="Health Badge Style" value={ct.healthBadgeStyle || "default"} options={[{ value: "default", label: "Default" }, { value: "solid", label: "Solid" }, { value: "glass", label: "Glass" }, { value: "rune", label: "Rune" }, { value: "minimal", label: "Minimal" }]} onFocus={() => setActivePath("cardTemplate.healthBadgeStyle")} onChange={(val) => updatePath("cardTemplate.healthBadgeStyle", val)} />
-          <DevSelect label="Mana Badge Style" value={ct.manaBadgeStyle || "default"} options={[{ value: "default", label: "Default" }, { value: "solid", label: "Solid" }, { value: "glass", label: "Glass" }, { value: "rune", label: "Rune" }, { value: "minimal", label: "Minimal" }]} onFocus={() => setActivePath("cardTemplate.manaBadgeStyle")} onChange={(val) => updatePath("cardTemplate.manaBadgeStyle", val)} />
-          <DevSelect label="Border Style" value={ct.cardBorderStyle || "default"} options={[{ value: "default", label: "Default" }, { value: "gold", label: "Gold" }, { value: "arcane", label: "Arcane" }, { value: "fire", label: "Fire" }, { value: "frost", label: "Frost" }]} onFocus={() => setActivePath("cardTemplate.cardBorderStyle")} onChange={(val) => updatePath("cardTemplate.cardBorderStyle", val)} />
-          <DevNumberInput label="Name Font Size" value={ct.nameFontSize} min={8} max={40} unit="px" onFocus={() => setActivePath("cardTemplate.nameFontSize")} onChange={(val) => updatePath("cardTemplate.nameFontSize", val)} />
-          <DevNumberInput label="Desc Font Size" value={ct.descFontSize} min={8} max={32} unit="px" onFocus={() => setActivePath("cardTemplate.descFontSize")} onChange={(val) => updatePath("cardTemplate.descFontSize", val)} />
-          <DevSlider label="Title Font Weight" value={ct.titleFontWeight ?? 700} min={300} max={900} step={100} onFocus={() => setActivePath("cardTemplate.titleFontWeight")} onChange={(val) => updatePath("cardTemplate.titleFontWeight", val)} />
-          <DevSlider label="Description Line Height" value={ct.descLineHeight ?? 1.5} min={1} max={2.2} step={0.05} onFocus={() => setActivePath("cardTemplate.descLineHeight")} onChange={(val) => updatePath("cardTemplate.descLineHeight", val)} />
-          <DevSlider label="Border Radius" value={ct.borderRadius ?? 0.058} min={0} max={0.2} step={0.002} onFocus={() => setActivePath("cardTemplate.borderRadius")} onChange={(val) => updatePath("cardTemplate.borderRadius", val)} />
-          <DevSlider label="Text Panel Opacity" value={ct.textPanelOpacity ?? 0.99} min={0} max={1} step={0.01} onFocus={() => setActivePath("cardTemplate.textPanelOpacity")} onChange={(val) => updatePath("cardTemplate.textPanelOpacity", val)} />
-          <DevSlider label="Frame Inset" value={ct.frameInset ?? 0} min={0} max={20} step={1} onFocus={() => setActivePath("cardTemplate.frameInset")} onChange={(val) => updatePath("cardTemplate.frameInset", val)} />
-          <DevSlider label="Art Inset" value={ct.artInset ?? 0} min={-20} max={20} step={1} onFocus={() => setActivePath("cardTemplate.artInset")} onChange={(val) => updatePath("cardTemplate.artInset", val)} />
-          <DevSlider label="Cost Badge Scale" value={ct.costBadgeScale ?? 1} min={0.5} max={1.8} step={0.05} onFocus={() => setActivePath("cardTemplate.costBadgeScale")} onChange={(val) => updatePath("cardTemplate.costBadgeScale", val)} />
-        </DevFieldGrid>
-      </DevSection>
+        {/* Prebuilt deck editor */}
+        <div style={{ border: "1px solid #1e3a5a", background: "#060c18", borderRadius: 10, padding: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={sectionHdr}>Prebuilt Deck — {hero.name} · {heroDeck.length}/{DECK_SIZE_TARGET}</div>
+            <button
+              onClick={resetDeck}
+              disabled={!hasDeckOverride}
+              style={{ background: "transparent", border: "1px solid #3a1e1e", color: hasDeckOverride ? "#e2a4a4" : "#334", padding: "5px 11px", borderRadius: 6, fontSize: 10, fontWeight: 700, cursor: hasDeckOverride ? "pointer" : "not-allowed", letterSpacing: 0.5 }}
+            >
+              Reset deck
+            </button>
+          </div>
 
-      <DevSection title="Visual" subtitle="Rendering and board utility toggles" defaultOpen={false}>
-        <DevFieldGrid cols={2}>
-          <DevToggle label="Battlefield Divider" checked={!!v.showBattlefieldDivider} onFocus={() => setActivePath("visual.showBattlefieldDivider")} onChange={(val) => updatePath("visual.showBattlefieldDivider", val)} />
-          <DevToggle label="Zone Labels" checked={!!v.showZoneLabels} onFocus={() => setActivePath("visual.showZoneLabels")} onChange={(val) => updatePath("visual.showZoneLabels", val)} />
-          <DevToggle label="Ambient Particles" checked={!!v.ambientParticles} onFocus={() => setActivePath("visual.ambientParticles")} onChange={(val) => updatePath("visual.ambientParticles", val)} />
-          <DevToggle label="Card Idle Breathing" checked={!!v.cardIdleBreathing} onFocus={() => setActivePath("visual.cardIdleBreathing")} onChange={(val) => updatePath("visual.cardIdleBreathing", val)} />
-          <DevToggle label="Board Gradient" checked={!!v.boardGradient} onFocus={() => setActivePath("visual.boardGradient")} onChange={(val) => updatePath("visual.boardGradient", val)} />
-          <DevToggle label="Preview Grid" checked={!!v.previewGrid} onFocus={() => setActivePath("visual.previewGrid")} onChange={(val) => updatePath("visual.previewGrid", val)} />
-          <DevToggle label="Snap To Grid" checked={!!v.snapToGrid} onFocus={() => setActivePath("visual.snapToGrid")} onChange={(val) => updatePath("visual.snapToGrid", val)} />
-        </DevFieldGrid>
-      </DevSection>
+          {/* Mana curve */}
+          <div style={{ display: "flex", gap: 3, alignItems: "flex-end", height: 48, marginBottom: 10, padding: "4px 0", background: "#040810", borderRadius: 6, border: "1px solid #0d1e30" }}>
+            {deckStats.curve.map((n, i) => {
+              const max = Math.max(1, ...deckStats.curve);
+              const h = Math.max(3, Math.round((n / max) * 40));
+              return (
+                <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                  <div style={{ fontSize: 9, color: "#85B7EB", fontWeight: 800 }}>{n || ""}</div>
+                  <div style={{ width: "70%", height: h, background: "linear-gradient(0deg,#1a4a8a,#378ADD)", borderRadius: 2 }} />
+                  <div style={{ fontSize: 9, color: "#556" }}>{i === 7 ? "7+" : i}</div>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ fontSize: 10, color: "#667", marginBottom: 8 }}>
+            Minions: <span style={{ color: "#e2c48a" }}>{deckStats.minions}</span> · Spells: <span style={{ color: "#85B7EB" }}>{deckStats.spells}</span>
+          </div>
 
-      <DevSection title="Presets" subtitle="Default restores and preset selectors" defaultOpen={false}>
-        <DevFieldGrid cols={3}>
-          <DevSelect label="Layout Preset" value={p.layoutPreset || "default"} options={[{ value: "default", label: "Default" }, { value: "compact", label: "Compact" }, { value: "wide", label: "Wide" }]} onFocus={() => setActivePath("presets.layoutPreset")} onChange={(val) => updatePath("presets.layoutPreset", val)} />
-          <DevSelect label="Card Preset" value={p.cardTemplatePreset || "default"} options={[{ value: "default", label: "Default" }, { value: "minimal", label: "Minimal" }, { value: "ornate", label: "Ornate" }]} onFocus={() => setActivePath("presets.cardTemplatePreset")} onChange={(val) => updatePath("presets.cardTemplatePreset", val)} />
-          <DevSelect label="Visual Preset" value={p.visualPreset || "default"} options={[{ value: "default", label: "Default" }, { value: "clean", label: "Clean" }, { value: "cinematic", label: "Cinematic" }]} onFocus={() => setActivePath("presets.visualPreset")} onChange={(val) => updatePath("presets.visualPreset", val)} />
-        </DevFieldGrid>
-        <DevButtonRow>
-          <DevResetButton label="Reset Layout To Default" onClick={() => resetScope("layout")} />
-          <DevResetButton label="Reset Card Template To Default" onClick={() => resetScope("cardTemplate")} />
-          <DevResetButton label="Reset All Config" danger onClick={() => resetDevConfig()} />
-        </DevButtonRow>
-      </DevSection>
-
-      <DevSection title="Diagnostics" subtitle="Render-safe config inspection" defaultOpen={false}>
-        <div style={{ border: "1px solid #1a2e49", borderRadius: 8, background: "#060f1d", padding: 10, fontSize: 12, color: "#a9c7e6", display: "grid", gap: 6 }}>
-          <div><span style={{ color: "#6f8cad" }}>Path:</span> <code>{activePath}</code></div>
-          <div><span style={{ color: "#6f8cad" }}>Value:</span> <code>{typeof currentValue === "object" ? JSON.stringify(currentValue) : String(currentValue)}</code></div>
-          <div><span style={{ color: "#6f8cad" }}>Storage:</span> {lsStatus}</div>
-          <div><span style={{ color: "#6f8cad" }}>Status:</span> {saveStatus}</div>
+          {/* Deck list */}
+          <div style={{ maxHeight: 320, overflowY: "auto", display: "flex", flexDirection: "column", gap: 3, border: "1px solid #0d1e30", borderRadius: 6, padding: 6, background: "#040810" }}>
+            {heroDeck.length === 0 && <div style={{ fontSize: 12, color: "#445", padding: 8, textAlign: "center" }}>Deck is empty.</div>}
+            {heroDeck.map((cid, idx) => {
+              const c = cardById.get(cid);
+              const rar = c?.rarity || "common";
+              const rarColor = rar === "legendary" ? "#EF9F27" : rar === "epic" ? "#9b59dd" : rar === "rare" ? "#378ADD" : "#5a6070";
+              return (
+                <div key={`${cid}_${idx}`} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 7px", background: "#07101d", borderRadius: 4, border: "1px solid #0d1e30" }}>
+                  <div style={{ width: 22, height: 22, borderRadius: "50%", background: "#0a1830", border: "1px solid #378ADD", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 900, color: "#85B7EB", flexShrink: 0 }}>{c?.cost ?? "?"}</div>
+                  <div style={{ fontSize: 15, flexShrink: 0 }}>{c?.emoji || "🃏"}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: c ? "#d0dae8" : "#663", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c?.name || `[missing: ${cid}]`}</div>
+                    <div style={{ fontSize: 9, color: rarColor, letterSpacing: 0.5, textTransform: "uppercase", fontWeight: 800 }}>{rar}{c?.type === "spell" ? " · spell" : ""}{c?.class && c.class !== "neutral" ? ` · ${c.class}` : ""}</div>
+                  </div>
+                  <button
+                    onClick={() => removeCardFromDeck(idx)}
+                    style={{ background: "transparent", border: "1px solid #3a1e1e", color: "#c56b6b", borderRadius: 4, padding: "2px 8px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              );
+            })}
+          </div>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          {wiredHints.map((hint, idx) => (
-            <div key={idx} style={{ fontSize: 11, color: "#7f9dbf" }}>• {hint}</div>
+      </div>
+
+      {/* ── Card picker ── */}
+      <div style={{ border: "1px solid #1e3a5a", background: "#060c18", borderRadius: 10, padding: 10, display: "flex", flexDirection: "column", gap: 8, height: "fit-content" }}>
+        <div style={sectionHdr}>Add Cards</div>
+        <input
+          style={inp}
+          placeholder="Search cards..."
+          value={cardSearch}
+          onChange={e => setCardSearch(e.target.value)}
+        />
+        <div style={{ display: "flex", gap: 4 }}>
+          {[
+            { id: "all", label: "All" },
+            { id: "usa", label: "USA!" },
+            { id: "tech", label: "Tech" },
+            { id: "neutral", label: "Neutral" },
+          ].map(opt => (
+            <button
+              key={opt.id}
+              onClick={() => setClassFilter(opt.id)}
+              style={{
+                flex: 1,
+                background: classFilter === opt.id ? "#0c1a31" : "transparent",
+                border: classFilter === opt.id ? "1px solid #378ADD" : "1px solid #102034",
+                color: classFilter === opt.id ? "#85B7EB" : "#556",
+                padding: "5px 0", fontSize: 10, fontWeight: 800, cursor: "pointer", borderRadius: 5, letterSpacing: 0.5,
+              }}
+            >
+              {opt.label}
+            </button>
           ))}
         </div>
-      </DevSection>
+        <div style={{ maxHeight: 520, overflowY: "auto", display: "flex", flexDirection: "column", gap: 3, border: "1px solid #0d1e30", borderRadius: 6, padding: 5, background: "#040810" }}>
+          {pickerCards.length === 0 && <div style={{ fontSize: 11, color: "#445", padding: 8, textAlign: "center" }}>No matches.</div>}
+          {pickerCards.map(c => {
+            const disabled = heroDeck.length >= DECK_SIZE_TARGET;
+            const rar = c.rarity || "common";
+            const rarColor = rar === "legendary" ? "#EF9F27" : rar === "epic" ? "#9b59dd" : rar === "rare" ? "#378ADD" : "#5a6070";
+            return (
+              <button
+                key={c.id}
+                onClick={() => addCardToDeck(c.id)}
+                disabled={disabled}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  background: "#07101d",
+                  border: "1px solid #0d1e30",
+                  color: "#ccd",
+                  borderRadius: 4, padding: "4px 6px", fontSize: 11, fontWeight: 600,
+                  cursor: disabled ? "not-allowed" : "pointer",
+                  opacity: disabled ? 0.4 : 1,
+                  textAlign: "left",
+                }}
+              >
+                <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#0a1830", border: "1px solid #378ADD", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 900, color: "#85B7EB", flexShrink: 0 }}>{c.cost ?? "?"}</div>
+                <div style={{ fontSize: 13, flexShrink: 0 }}>{c.emoji || "🃏"}</div>
+                <div style={{ flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</div>
+                <div style={{ fontSize: 9, color: rarColor, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0.4 }}>{rar[0]}</div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
+
 function parseJsonSafe(raw, label) {
   try {
     return { ok: true, value: raw?.trim() ? JSON.parse(raw) : {} };
@@ -859,7 +519,7 @@ function deriveMechanicFromAction(action, fallbackScope = "target") {
   return { mechanic: "none", amount: 1, attackDelta: 1, healthDelta: 1, scope: fallbackScope };
 }
 
-export default function CardCreator({ onClose, savedDecks = [], onSavedDecksChange, activeDeck, onSelectDeck, onDevSettingsChange }) {
+export default function CardCreator({ onClose, savedDecks = [], onSavedDecksChange, activeDeck, onSelectDeck }) {
   const [tab, setTab] = useState("forge");
   const [forgeMode, setForgeMode] = useState(null); // null | "create" | "edit"
   const [libTab, setLibTab] = useState("all");
@@ -928,19 +588,6 @@ export default function CardCreator({ onClose, savedDecks = [], onSavedDecksChan
   const editCards = allCards.filter(c =>
     !editSearch || c.name.toLowerCase().includes(editSearch.toLowerCase())
   );
-
-  useEffect(() => {
-    try {
-      const loaded = {};
-      HEROES.forEach(hero => {
-        const saved = localStorage.getItem(portraitStorageKey(hero.id));
-        if (saved) loaded[hero.id] = saved;
-      });
-      setHeroPortraits(loaded);
-    } catch {
-      // keep defaults if storage is unavailable
-    }
-  }, []);
 
   function resetForm() {
     setF(INITIAL_FORM);
@@ -1211,11 +858,11 @@ export default function CardCreator({ onClose, savedDecks = [], onSavedDecksChan
       <div style={{ background: "#04080f", borderBottom: "1px solid #0d1e30", display: "flex", flexShrink: 0 }}>
         <button onClick={() => setTab("forge")} style={{ background: tab === "forge" ? "linear-gradient(135deg,#0d1e38,#1a3a64)" : "transparent", border: "none", borderBottom: tab === "forge" ? "2px solid #378ADD" : "2px solid transparent", color: tab === "forge" ? "#85B7EB" : "#445", padding: "10px 20px", fontSize: 12, fontWeight: 900, cursor: "pointer" }}>Forge</button>
         <button onClick={() => setTab("deck")} style={{ background: tab === "deck" ? "linear-gradient(135deg,#0d1e38,#1a3a64)" : "transparent", border: "none", borderBottom: tab === "deck" ? "2px solid #378ADD" : "2px solid transparent", color: tab === "deck" ? "#85B7EB" : "#445", padding: "10px 20px", fontSize: 12, fontWeight: 900, cursor: "pointer" }}>Deck Builder</button>
-        <button onClick={() => setTab("dev")} style={{ background: tab === "dev" ? "linear-gradient(135deg,#1a1200,#3a2800)" : "transparent", border: "none", borderBottom: tab === "dev" ? "2px solid #EF9F27" : "2px solid transparent", color: tab === "dev" ? "#EF9F27" : "#445", padding: "10px 20px", fontSize: 12, fontWeight: 900, cursor: "pointer", letterSpacing: 0.5 }}>DEV ג™</button>
+        <button onClick={() => setTab("heroes")} style={{ background: tab === "heroes" ? "linear-gradient(135deg,#1a1200,#3a2800)" : "transparent", border: "none", borderBottom: tab === "heroes" ? "2px solid #EF9F27" : "2px solid transparent", color: tab === "heroes" ? "#EF9F27" : "#445", padding: "10px 20px", fontSize: 12, fontWeight: 900, cursor: "pointer", letterSpacing: 0.5 }}>Heroes ★</button>
       </div>
 
       <div style={{ flex: 1, padding: 24, overflowY: "auto" }}>
-        {tab === "dev" && <DevTabSection onDevSettingsChange={onDevSettingsChange} />}
+        {tab === "heroes" && <HeroDevTabSection />}
 
         {tab === "forge" && forgeMode === null && (
           <div style={{ maxWidth: 760, margin: "40px auto 0", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>

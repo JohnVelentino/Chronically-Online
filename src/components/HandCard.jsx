@@ -110,18 +110,16 @@ export default function HandCard({ card, selected, disabled, onClick, cardRef, d
     <motion.div
       ref={cardRef}
       onClick={handle}
-      onMouseEnter={() => { setHov(true); if (typeof audioManager !== "undefined" && audioManager?.play) audioManager.play("hover"); }}
+      onMouseEnter={(e) => { setHov(true); setMouse({ x: e.clientX, y: e.clientY }); if (typeof audioManager !== "undefined" && audioManager?.play) audioManager.play("hover"); }}
       onMouseLeave={() => {
         setHov(false);
         setMouse(null);
       }}
-      onMouseMove={(e) => setMouse({ x: e.clientX, y: e.clientY })}
       drag={dragEnabled}
       dragTransition={{ bounceStiffness: 300, bounceDamping: 20 }}
       dragMomentum={false}
       onDragStart={() => onDragStart && onDragStart(card)}
       onDragEnd={(event, info) => onDragEnd && onDragEnd(info.point)}
-      whileHover={{ y: -4, scale: 1.03, transition: { type: "tween", duration: LOW.durationS, ease: LOW.ease } }}
       layoutId={`card-${card.uid}`}
       animate={{ scale, y: isLegendaryFloating ? [0, -4, 0] : ty, rotateY: isLegendaryFloating ? 0 : selected ? 2 : 0 }}
       transition={motionTransition}

@@ -1,4 +1,36 @@
-import { mkUid, drawCard } from "./gameState.js";
+import { mkUid, drawCard, makeDeckFrom } from "./gameState.js";
+import { HEROES } from "../data/cards.js";
+
+function triggerBeastGamesRestart(gs) {
+  let next = gs;
+  ["player", "ai"].forEach(s => {
+    const heroId = next[s].heroId;
+    const hero = HEROES.find(h => h.id === heroId);
+    const deckIds = hero?.deckIds || [];
+    const fullDeck = makeDeckFrom(deckIds);
+    const hand = fullDeck.slice(0, 9);
+    const deck = fullDeck.slice(9, 14); // 5-card deck
+    next = {
+      ...next,
+      [s]: {
+        ...next[s],
+        hp: next[s].maxHp,
+        armor: 0,
+        mana: 10,
+        maxMana: 10,
+        hand,
+        deck,
+        board: [],
+        ultimateUses: 2,
+        ultimateUsedThisTurn: s === "player",
+        beastGamesCasts: 0,
+        pendingManaNextTurn: 0,
+        tempAuraBonus: 0,
+      },
+    };
+  });
+  return next;
+}
 
 function getEnemySide(side) {
   return side === "player" ? "ai" : "player";
@@ -422,6 +454,35 @@ export function destroyAllMinions(gs, sourceSide = "player") {
   return resolveDeaths(marked, sourceSide);
 }
 
+export function applyZuckUltimate(gs, casterSide) {
+  const enemySide = getEnemySide(casterSide);
+  const caster = gs[casterSide];
+  const enemy = gs[enemySide];
+
+  const slots = Math.max(0, 7 - caster.board.length);
+  const clones = enemy.board.slice(0, slots).map(src => {
+    const kw = Array.isArray(src.keywords) ? [...src.keywords] : [];
+    const immediate = kw.includes("charge") || kw.includes("rush");
+    return {
+      ...src,
+      uid: mkUid(),
+      summoningSick: !immediate,
+      canAttack: immediate,
+      attacksRemaining: immediate ? 1 : 0,
+      rushOnlyThisTurn: kw.includes("rush") && !kw.includes("charge"),
+    };
+  });
+
+  const cheapenedHand = caster.hand.map(c => ({ ...c, cost: Math.max(0, (c.cost || 0) - 1) }));
+  const bumpedHand = enemy.hand.map(c => ({ ...c, cost: (c.cost || 0) + 1, zuckBump: true }));
+
+  return recalculateAuras({
+    ...gs,
+    [casterSide]: { ...caster, board: [...caster.board, ...clones], hand: cheapenedHand },
+    [enemySide]: { ...enemy, hand: bumpedHand },
+  });
+}
+
 export function damageHero(gs, heroSide, amount) {
   return {
     ...gs,
@@ -619,6 +680,21 @@ export function resolveEndOfTurn(gs, side) {
 
   next = returnTemporaryControl(next, side);
 
+  // Clear Zuck's "enemy cards cost +1 next turn" bump at end of the affected side's turn
+  if (next[side].hand.some(c => c.zuckBump)) {
+    next = {
+      ...next,
+      [side]: {
+        ...next[side],
+        hand: next[side].hand.map(c => {
+          if (!c.zuckBump) return c;
+          const { zuckBump: _zuckBump, ...rest } = c;
+          return { ...rest, cost: Math.max(0, (c.cost || 0) - 1) };
+        }),
+      },
+    };
+  }
+
   const visibility = next.visibility || {};
   const cleared = { ...visibility };
   ["playerHandRevealed", "aiHandRevealed"].forEach(key => {
@@ -665,6 +741,16 @@ const SPELL_EFFECT_MAP = {
 export function applySpell(effect, targetId, gs, side, sourceCard = null) {
   const log = [];
   const enemy = side === "player" ? "ai" : "player";
+
+  // Elusive guard: spells from the opposing side cannot target an elusive minion.
+  // Friendly buffs are still allowed — only block when the target belongs to the enemy.
+  if (targetId && typeof targetId === "string" && targetId !== "hero" && !targetId.startsWith("hero_")) {
+    const enemyBoard = gs[enemy]?.board || [];
+    const enemyTarget = enemyBoard.find(m => m.uid === targetId);
+    if (enemyTarget && (enemyTarget.keywords?.includes("elusive") || enemyTarget.keywords?.includes("stealth"))) {
+      return { gs, log: ["Elusive — can't be targeted by spells."] };
+    }
+  }
 
   function dmg(id, n) {
     gs = dealDamage(gs, id, n, side);
@@ -767,6 +853,136 @@ export function applySpell(effect, targetId, gs, side, sourceCard = null) {
   } else if (effect === "summon_gymbros") {
     gs = summonToken(gs, side, { id: "gymbro", name: "Gymbro", cost: 3, atk: 3, hp: 3, type: "minion", rarity: "common", keywords: [], class: "neutral", effect: "" }, 3);
     log.push("Three Gymbros!");
+  } else if (effect === "mrbeast_check") {
+    gs = { ...gs, [side]: { ...gs[side], armor: (gs[side].armor || 0) + 5 } };
+    gs = drawCards(gs, side, 1);
+    log.push("+5 Armor. Drew a card.");
+  } else if (effect === "ten_k_giveaway") {
+    gs = { ...gs, [side]: { ...gs[side], armor: (gs[side].armor || 0) + 10 } };
+    gs = drawCards(gs, side, 2);
+    log.push("+10 Armor. Drew 2. Chat rewarded.");
+  } else if (effect === "hundred_days") {
+    const p = gs[side];
+    gs = { ...gs, [side]: { ...p, hp: Math.min(p.maxHp, p.hp + 20) } };
+    gs = drawCards(gs, side, 3);
+    log.push("Restored 20 HP. Drew 3.");
+  } else if (effect === "squid_rlgl") {
+    ["player", "ai"].forEach(s => {
+      gs = { ...gs, [s]: { ...gs[s], board: gs[s].board.map(m => (m.atk <= 4 ? { ...m, hp: 0 } : m)) } };
+    });
+    gs = resolveDeaths(gs, side);
+    log.push("Red light. Green light. Nobody's fast enough.");
+  } else if (effect === "last_to_leave") {
+    const weakest = gs[enemy].board.slice().sort((a, b) => (a.atk + a.hp) - (b.atk + b.hp))[0];
+    if (weakest) gs = destroyMinion(gs, weakest.uid, side);
+    if (targetId) gs = buffMinion(gs, targetId, 5, 5, "permanent", side);
+    log.push("Weakest enemy eliminated. +5/+5 to survivor.");
+  } else if (effect === "philanthropy_arc") {
+    gs = summonToken(gs, side, { id: "giant_check", name: "Giant Check", cost: 7, atk: 10, hp: 10, type: "minion", rarity: "legendary", keywords: ["taunt"], class: "Viral" }, 1);
+    const p = gs[side];
+    gs = { ...gs, [side]: { ...p, hp: Math.min(p.maxHp, p.hp + 10) } };
+    log.push("Giant Check summoned. +10 HP.");
+  } else if (effect === "subscribe_spell") {
+    if (gs[enemy].deck.length > 0 && gs[side].hand.length < 10) {
+      const picked = pickRandom(gs[enemy].deck);
+      if (picked) {
+        gs = { ...gs, [side]: { ...gs[side], hand: [...gs[side].hand, { ...picked, uid: mkUid() }] } };
+        log.push("Subscribed! Copied a card from enemy deck.");
+      }
+    }
+  } else if (effect === "bitch_lasagna") {
+    gs = damageHero(gs, enemy, 8);
+    gs = dealDamageToAll(gs, "enemy_minions", 8, side);
+    gs = drawCards(gs, side, 6);
+    const p = gs[side];
+    gs = { ...gs, [side]: { ...p, hp: Math.min(p.maxHp, p.hp + 30) } };
+    gs = summonToken(gs, enemy, { id: "tseries_tower", name: "T-Series Content Tower", cost: 8, atk: 2, hp: 40, type: "minion", rarity: "legendary", keywords: ["taunt", "elusive"], class: "Viral" }, 1);
+    log.push("T-series ain't nothing but a 🍝");
+  } else if (effect === "cigar_night") {
+    gs = damageHero(gs, side, 10);
+    const p = gs[side];
+    gs = { ...gs, [side]: { ...p, board: p.board.map(m => normalizeMinionStats({ ...m, baseAtk: (m.baseAtk ?? m.atk) + 8, hp: m.hp + 8, maxHp: (m.maxHp ?? m.hp) + 8 })) } };
+    gs = drawCards(gs, side, 1);
+    log.push("Cigar Night! +8/+8 to all friendly. -10 HP to hero.");
+  } else if (effect === "celebrity_security") {
+    gs = { ...gs, [side]: { ...gs[side], armor: (gs[side].armor || 0) + 10 } };
+    gs = summonToken(gs, side, { id: "security_team", name: "A-Level Security Team", cost: 4, atk: 4, hp: 8, type: "minion", rarity: "rare", keywords: ["taunt", "cant_attack_hero"], class: "Viral" }, 4);
+    log.push("+10 Armor. 4 Security summoned. Can't attack hero.");
+  } else if (effect === "draw2") {
+    gs = drawCards(gs, side, 2);
+    log.push("Drew 2 cards.");
+  } else if (effect === "damage_all_minions_2") {
+    gs = dealDamageToAll(gs, "all_minions", 2, side);
+    log.push("2 damage to all minions.");
+  } else if (effect === "barrels_3x2_random") {
+    for (let i = 0; i < 3; i += 1) {
+      const targets = [`hero_${enemy}`, ...gs[enemy].board.map(m => m.uid)];
+      const tid = pickRandom(targets);
+      if (tid) gs = dealDamage(gs, tid, 2, side);
+    }
+    log.push("BARRELS!!! 3x 2 damage random.");
+  } else if (effect === "pump_all_11") {
+    const p = gs[side];
+    gs = { ...gs, [side]: { ...p, board: p.board.map(m => normalizeMinionStats({ ...m, baseAtk: (m.baseAtk ?? m.atk) + 1, hp: m.hp + 1, maxHp: (m.maxHp ?? m.hp) + 1 })) } };
+    log.push("All friendly minions +1/+1.");
+  } else if (effect === "temp_atk2") {
+    if (targetId) gs = buffMinion(gs, targetId, 2, 0, "turn", side);
+    log.push("+2 Attack this turn.");
+  } else if (effect === "temp_atk3_permanent") {
+    if (targetId) gs = buffMinion(gs, targetId, 3, 0, "permanent", side);
+    log.push("+3 Attack.");
+  } else if (effect === "discard_self_draw3") {
+    const p = gs[side];
+    if (p.hand.length > 0) {
+      const discard = pickRandom(p.hand);
+      gs = { ...gs, [side]: { ...p, hand: p.hand.filter(c => c.uid !== discard.uid) } };
+    }
+    gs = drawCards(gs, side, 3);
+    log.push("Discarded 1. Drew 3.");
+  } else if (effect === "welcome_real_world") {
+    gs = drawCards(gs, side, 2);
+    log.push("Welcome to the Real World. Drew 2.");
+  } else if (effect === "damage2_draw1") {
+    if (targetId) gs = dealDamage(gs, targetId, 2, side);
+    gs = drawCards(gs, side, 1);
+    log.push("2 damage. Drew 1.");
+  } else if (effect === "damage2_any") {
+    if (targetId) gs = dealDamage(gs, targetId, 2, side);
+    log.push("2 damage.");
+  } else if (effect === "copy_enemy_hand_card") {
+    gs = copyRandomCardFromHand(gs, enemy, side);
+    log.push("Copied enemy card.");
+  } else if (effect === "destroy_and_lock_ult2") {
+    if (targetId) gs = destroyMinion(gs, targetId, side);
+    gs = { ...gs, [enemy]: { ...gs[enemy], ultimateLockedTurns: (gs[enemy].ultimateLockedTurns || 0) + 2 } };
+    log.push("Destroyed + enemy Ultimate locked for 2 turns.");
+  } else if (effect === "buff_plus_taunt") {
+    if (targetId) {
+      ["player", "ai"].forEach(s => {
+        if (gs[s].board.find(m => m.uid === targetId)) {
+          gs = updateMinion(gs, s, targetId, m => normalizeMinionStats({ ...m, hp: m.hp + 3, maxHp: (m.maxHp ?? m.hp) + 3, keywords: m.keywords?.includes("taunt") ? m.keywords : [...(m.keywords || []), "taunt"] }));
+        }
+      });
+    }
+    log.push("+3 HP + Taunt.");
+  } else if (effect === "armor8_next_spell_discount2") {
+    gs = { ...gs, [side]: { ...gs[side], armor: (gs[side].armor || 0) + 8 } };
+    log.push("+8 Armor.");
+  } else if (effect === "draw3_viral_discount1_turn") {
+    gs = drawCards(gs, side, 3);
+    log.push("Drew 3 Viral cards.");
+  } else if (effect === "refresh_ult_plus_aura2") {
+    gs = { ...gs, [side]: { ...gs[side], ultimateUses: Math.max(0, (gs[side].ultimateUses || 0) - 1), tempAuraBonus: (gs[side].tempAuraBonus || 0) + 2, mana: Math.min(10, (gs[side].mana || 0) + 2) } };
+    log.push("Ult refreshed. +2 Aura this turn.");
+  } else if (effect === "beast_games") {
+    const casts = (gs[side].beastGamesCasts || 0) + 1;
+    if (casts < 2) {
+      gs = { ...gs, [side]: { ...gs[side], beastGamesCasts: casts } };
+      log.push(`Beast Games cast ${casts}/2. Cast again to trigger.`);
+    } else {
+      gs = triggerBeastGamesRestart(gs);
+      log.push("BEAST GAMES ACTIVATED. Match restarted.");
+    }
   }
 
   gs = resolveOnEnemySpellCast(gs, side, log);
@@ -823,7 +1039,56 @@ export function playBattlecry(card, gs, side) {
   }
   if (kw.includes("draw2")) {
     gs = drawCards(gs, side, 2);
-    log.push("Neuralink! Drew 2 cards!");
+    log.push("Drew 2 cards!");
+  }
+  if (kw.includes("armor3")) {
+    gs = { ...gs, [side]: { ...gs[side], armor: (gs[side].armor || 0) + 3 } };
+    log.push("+3 Armor.");
+  }
+  if (kw.includes("mrbeast_boss")) {
+    gs = { ...gs, [side]: { ...gs[side], armor: (gs[side].armor || 0) + 20 } };
+    gs = drawCards(gs, side, 2);
+    log.push("Jimmy drops the check. +20 Armor, drew 2.");
+  }
+  if (kw.includes("summon_chandler")) {
+    gs = summonToken(gs, side, { id: "chandler_token", name: "Chandler", cost: 3, atk: 2, hp: 4, type: "minion", rarity: "rare", keywords: [], class: "Viral" }, 1);
+    log.push("Another Chandler appears.");
+  }
+  if (kw.includes("summon_sub_counter")) {
+    gs = summonToken(gs, side, { id: "sub_counter", name: "Subscribe Counter", cost: 1, atk: 1, hp: 1, type: "minion", rarity: "common", keywords: [], class: "Viral" }, 1);
+    log.push("Subscribe Counter summoned.");
+  }
+  if (kw.includes("summon_fans2")) {
+    gs = summonToken(gs, side, { id: "fan_token_tate", name: "Manly G Fan", cost: 1, atk: 1, hp: 1, type: "minion", rarity: "common", keywords: [], class: "Viral" }, 2);
+    log.push("Two Manly G Fans.");
+  }
+  if (kw.includes("summon_edgar")) {
+    gs = summonToken(gs, side, { id: "edgar_token", name: "Edgar", cost: 1, atk: 1, hp: 2, type: "minion", rarity: "common", keywords: [], class: "Viral" }, 1);
+    log.push("EDGAR!");
+  }
+  if (kw.includes("grant_charge_all_turn")) {
+    const p = gs[side];
+    gs = { ...gs, [side]: { ...p, board: p.board.map(m => ({ ...m, summoningSick: false, canAttack: true, attacksRemaining: Math.max(m.attacksRemaining || 0, 1), keywords: m.keywords?.includes("charge") ? m.keywords : [...(m.keywords || []), "charge"] })) } };
+    log.push("All your minions have Charge this turn.");
+  }
+  if (kw.includes("self_damage2")) {
+    gs = damageHero(gs, side, 2);
+    log.push("-2 HP to own hero.");
+  }
+  if (kw.includes("collab_pump22")) {
+    if (gs[side].board.filter(m => m.uid !== card.uid).length >= 3) {
+      gs = updateMinion(gs, side, card.uid, m => normalizeMinionStats({ ...m, baseAtk: (m.baseAtk ?? m.atk) + 2, hp: m.hp + 2, maxHp: (m.maxHp ?? m.hp) + 2 }));
+      log.push("Collab! +2/+2.");
+    }
+  }
+  if (kw.includes("pump_all_atk1_turn")) {
+    const p = gs[side];
+    gs = { ...gs, [side]: { ...p, board: p.board.map(m => normalizeMinionStats({ ...m, tempAttackBonus: (m.tempAttackBonus || 0) + 1, tempAttackExpiresOn: side })) } };
+    log.push("All friendly +1 Attack this turn.");
+  }
+  if (kw.includes("copy_enemy_card") || kw.includes("copy_enemy_hand_card")) {
+    gs = copyRandomCardFromHand(gs, enemy, side);
+    log.push("Copied a card from enemy hand.");
   }
 
   const triggerActions = getTriggerActions(card, "battlecry");
@@ -848,8 +1113,9 @@ export function doAttack(atkUid, atkSide, targetId, gs) {
 
   if (hasTaunt && targetId === "hero") return { gs, log: ["Taunt is blocking!"] };
   if (hasTaunt && defMin && !defMin.keywords?.includes("taunt")) return { gs, log: ["Must attack Taunt!"] };
-  if (defMin?.keywords?.includes("elusive") || defMin?.keywords?.includes("stealth")) return { gs, log: ["Can't target that!"] };
+  // Elusive only blocks spells — attacks can still hit elusive minions.
   if (targetId === "hero" && att.rushOnlyThisTurn && !att.keywords?.includes("charge")) return { gs, log: ["Rush minions can't hit heroes this turn!"] };
+  if (targetId === "hero" && att.keywords?.includes("cant_attack_hero")) return { gs, log: ["This minion can't attack heroes!"] };
 
   const remaining = (att.attacksRemaining ?? 1) - 1;
 

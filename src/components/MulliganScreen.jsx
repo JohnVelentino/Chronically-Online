@@ -38,16 +38,19 @@ export default function MulliganScreen({ hand, onConfirm }) {
       >
         <div style={{
           fontSize: 40, fontWeight: 900, letterSpacing: 1,
+          lineHeight: 1.3,
+          padding: "0.18em 0.1em",
           background: "linear-gradient(180deg, #ffe08a 0%, #f0b847 50%, #b2741f 100%)",
           WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
           backgroundClip: "text", color: "transparent",
           textShadow: "0 4px 24px rgba(240,184,71,0.35)",
           fontFamily: "'Cinzel', 'Trajan Pro', serif",
+          overflow: "visible",
         }}>
           Change ur GAY cards if needed.
         </div>
         <div style={{ fontSize: 13, color: "#b7c3d8", marginTop: 10, letterSpacing: 0.6, fontWeight: 600 }}>
-          Click any card to mark it for replacement. Hit Lock In when you're ready.
+          Replace High Cost Cards and unnecesary Spells.
         </div>
       </motion.div>
 

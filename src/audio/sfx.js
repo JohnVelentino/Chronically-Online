@@ -118,6 +118,45 @@ function createSoundEngine() {
       toneSound(500, 0.06, 0.1);
       toneSound(700, 0.06, 0.08);
     },
+    ultimate() {
+      // Deep bass slam
+      toneSound(60, 0.4, 0.4);
+      toneSound(90, 0.35, 0.35);
+      noiseSound(0.25);
+      // Rising power chord
+      setTimeout(() => {
+        toneSound(220, 0.25, 0.28);
+        toneSound(330, 0.2, 0.24);
+        toneSound(440, 0.2, 0.22);
+      }, 90);
+      // High sparkle sweep
+      setTimeout(() => {
+        toneSound(880, 0.18, 0.18);
+        toneSound(1320, 0.15, 0.15);
+        toneSound(1760, 0.12, 0.12);
+      }, 200);
+      setTimeout(() => {
+        toneSound(2200, 0.1, 0.12);
+        noiseSound(0.1);
+      }, 340);
+    },
+    ultimateReady() {
+      // Low weight thud under chime
+      toneSound(80, 0.25, 0.22);
+      // Ascending heroic chime — sigil awakens
+      toneSound(440, 0.08, 0.22);
+      setTimeout(() => toneSound(660, 0.08, 0.22), 60);
+      setTimeout(() => toneSound(880, 0.10, 0.24), 130);
+      setTimeout(() => {
+        toneSound(1320, 0.14, 0.22);
+        toneSound(1760, 0.12, 0.17);
+      }, 210);
+      setTimeout(() => {
+        toneSound(2640, 0.10, 0.14);
+        toneSound(3520, 0.08, 0.10);
+        noiseSound(0.06);
+      }, 330);
+    },
   };
 }
 

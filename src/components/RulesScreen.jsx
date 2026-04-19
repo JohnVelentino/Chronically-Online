@@ -39,12 +39,15 @@ export default function RulesScreen({ onContinue }) {
         transition={{ duration: 0.5, delay: 0.1 }}
         style={{
           fontSize: "clamp(32px, 5vw, 56px)", fontWeight: 900, margin: 0, letterSpacing: 1.5,
+          lineHeight: 1.3,
+          padding: "0.18em 0.1em",
           background: "linear-gradient(180deg, #ffeda0 0%, #f3b73a 45%, #a56617 100%)",
           WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
           backgroundClip: "text", color: "transparent",
           textShadow: "0 6px 32px rgba(243,183,58,0.5)",
           fontFamily: "'Cinzel', 'Trajan Pro', serif",
           textAlign: "center",
+          overflow: "visible",
         }}
       >
         How to Destroy This Fucker

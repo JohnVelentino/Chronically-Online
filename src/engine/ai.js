@@ -1,5 +1,6 @@
-import { drawCard } from "./gameState.js";
-import { applySpell, playBattlecry, doAttack, createMinionEntity, destroyAllMinions, damageHero, takeControlOfMinion, stealCardFromHandByUid } from "./combat.js";
+import { drawCard, mkUid } from "./gameState.js";
+import { applySpell, applyZuckUltimate, playBattlecry, doAttack, createMinionEntity, destroyAllMinions, damageHero, takeControlOfMinion, stealCardFromHandByUid } from "./combat.js";
+import { getLib } from "../data/cards.js";
 
 function getUnlockedCharges(maxMana) {
   let n = 0;
@@ -64,6 +65,77 @@ function resolveAiUltimate(gs, heroId) {
       },
     });
     log.push("⚙️ AI fires Future Tech!", "+5 Aura, +10 Armor, 4 elite units deployed.");
+  } else if (heroId === "tate") {
+    const warRoom = { id: "war_room_member", name: "War Room Member", type: "minion", cost: 8, rarity: "legendary", class: "Viral", atk: 8, hp: 8, emoji: "🕴️", keywords: ["charge"], desc: "Charge." };
+    for (let i = 0; i < 3; i++) {
+      if (ng.ai.board.length >= 7) break;
+      ng = { ...ng, ai: { ...ng.ai, board: [...ng.ai.board, createMinionEntity(warRoom)] } };
+    }
+    const lib = getLib();
+    const discoverIds = ["cigar_night", "bugatti_chiron", "security_team_spell"];
+    const discoverCards = discoverIds.map(id => lib.find(c => c.id === id)).filter(Boolean);
+    const room = Math.max(0, 10 - ng.ai.hand.length);
+    const toAdd = discoverCards.slice(0, room).map(c => ({ ...c, uid: mkUid() }));
+    ng = { ...ng, ai: { ...ng.ai, hand: [...ng.ai.hand, ...toAdd] } };
+    log.push("👊 AI activates Top G Protocol!", "3 War Room Members summoned. 3 Discover cards added.");
+  } else if (heroId === "pewdiepie") {
+    const stealCount = Math.min(10, ng.player.deck.length);
+    const stolen = [];
+    for (let i = 0; i < stealCount; i++) {
+      if (!ng.player.deck.length) break;
+      const idx = Math.floor(Math.random() * ng.player.deck.length);
+      const card = ng.player.deck[idx];
+      stolen.push({ ...card, uid: mkUid() });
+      ng = { ...ng, player: { ...ng.player, deck: ng.player.deck.filter((_, i2) => i2 !== idx) } };
+    }
+    ng = { ...ng, ai: { ...ng.ai, deck: [...ng.ai.deck, ...stolen] } };
+    const army = { id: "nine_yo_army", name: "9yo Army Member", type: "minion", cost: 2, rarity: "common", class: "Viral", atk: 2, hp: 2, emoji: "🪖", keywords: ["charge"], desc: "Charge." };
+    for (let i = 0; i < 6; i++) {
+      if (ng.ai.board.length >= 7) break;
+      ng = { ...ng, ai: { ...ng.ai, board: [...ng.ai.board, createMinionEntity(army)] } };
+    }
+    const lib = getLib();
+    const lasagna = lib.find(c => c.id === "bitch_lasagna");
+    if (lasagna && ng.ai.hand.length < 10) {
+      ng = { ...ng, ai: { ...ng.ai, hand: [...ng.ai.hand, { ...lasagna, uid: mkUid() }] } };
+    }
+    log.push("🎮 AI hits Meme Review!", `Stole ${stealCount} cards. 6 Bros summoned. Bitch Lasagna added.`);
+  } else if (heroId === "zuck") {
+    const cloneCount = Math.min(ng.player.board.length, Math.max(0, 7 - ng.ai.board.length));
+    ng = applyZuckUltimate(ng, "ai");
+    log.push("🤖 AI runs THE ZUCK!", `Copied ${cloneCount} of your minions. Your cards +1 next turn. AI hand −1 permanently.`);
+  } else if (heroId === "mrbeast") {
+    ng = destroyAllMinions(ng, "ai");
+    const contestant = { id: "contestant", name: "Contestant", type: "minion", cost: 3, rarity: "common", class: "Viral", atk: 3, hp: 3, emoji: "🎮", keywords: [], desc: "A Squid Game contestant." };
+    for (let i = 0; i < 4; i++) {
+      if (ng.ai.board.length >= 7) break;
+      ng = { ...ng, ai: { ...ng.ai, board: [...ng.ai.board, createMinionEntity(contestant)] } };
+    }
+    for (let i = 0; i < 3; i++) {
+      if (ng.player.board.length >= 7) break;
+      ng = { ...ng, player: { ...ng.player, board: [...ng.player.board, createMinionEntity(contestant)] } };
+    }
+    if (ng.ai.board.length > 0) {
+      const survivorIdx = Math.floor(Math.random() * ng.ai.board.length);
+      ng = {
+        ...ng,
+        ai: {
+          ...ng.ai,
+          board: ng.ai.board.map((m, i) => i === survivorIdx ? createMinionEntity({ ...m, id: "survivor", name: "Survivor", atk: m.atk + 10, hp: m.hp + 10, maxHp: (m.maxHp ?? m.hp) + 10, emoji: "🏆", rarity: "legendary", keywords: ["charge"], desc: "Charge." }) : m),
+        },
+      };
+    }
+    ng = {
+      ...ng,
+      ai: { ...ng.ai, armor: (ng.ai.armor || 0) + 20, mana: Math.min(10, (ng.ai.mana || 0) + 5), tempAuraBonus: (ng.ai.tempAuraBonus || 0) + 5 },
+      player: { ...ng.player, armor: (ng.player.armor || 0) + 20 },
+    };
+    const lib = getLib();
+    const beastGames = lib.find(c => c.id === "beast_games");
+    if (beastGames && ng.ai.hand.length < 10) {
+      ng = { ...ng, ai: { ...ng.ai, hand: [...ng.ai.hand, { ...beastGames, uid: mkUid() }] } };
+    }
+    log.push("🎯 AI triggers Squid Game Charity!", "Board wiped. 7 Contestants. Survivor crowned. +20 Armor both.");
   }
   ng = {
     ...ng,
@@ -117,7 +189,8 @@ export function runAiTurnSteps(gs) {
     if (!aff.length) break;
     const noT  = aff.filter(c => c.type === "spell" && c.targetType === "none");
     const buffT = aff.filter(c => c.type === "spell" && c.targetType === "minion" && isBuffSpell(c) && gs.ai.board.length > 0);
-    const dmgT = aff.filter(c => c.type === "spell" && c.targetType === "minion" && !isBuffSpell(c) && gs.player.board.length > 0);
+    const spellableEnemy = gs.player.board.filter(m => !m.keywords?.includes("elusive") && !m.keywords?.includes("stealth"));
+    const dmgT = aff.filter(c => c.type === "spell" && c.targetType === "minion" && !isBuffSpell(c) && spellableEnemy.length > 0);
     const mins = aff.filter(c => c.type === "minion" && gs.ai.board.length < 7);
 
     if (noT.length) {
@@ -134,7 +207,7 @@ export function runAiTurnSteps(gs) {
       gs = r.gs;
       steps.push({ type: "play_card", card: s, verb: "casts", gs, log: ["AI casts " + s.name + " on " + tgt.name, ...r.log] });
     } else if (dmgT.length) {
-      const s = dmgT[0]; const tgt = highestThreat(gs.player.board);
+      const s = dmgT[0]; const tgt = highestThreat(spellableEnemy);
       if (!tgt) break;
       gs = { ...gs, ai: { ...gs.ai, hand: gs.ai.hand.filter(c => c.uid !== s.uid), mana: gs.ai.mana - s.cost } };
       const r = applySpell(s.effectId || s.effect, tgt.uid, gs, "ai", s);
@@ -163,7 +236,8 @@ export function runAiTurnSteps(gs) {
       const lowHp = (gs.ai.hp || 0) < 18;
       const finisher = (gs.player.hp || 0) <= 16 && heroId === "trump";
       const dumpLate = gs.ai.maxMana >= 9;
-      const shouldUlt = lowHp || finisher || dumpLate || threat >= 6 || unlocked === 2;
+      const zuckClone = heroId === "zuck" && gs.player.board.length >= 2 && gs.ai.board.length < 6;
+      const shouldUlt = lowHp || finisher || dumpLate || threat >= 6 || unlocked === 2 || zuckClone;
       if (shouldUlt) {
         const r = resolveAiUltimate(gs, heroId);
         gs = r.gs;

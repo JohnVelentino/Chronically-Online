@@ -28,6 +28,16 @@
   100% { transform: translateX(320%) skewX(-18deg); }
 }
 
+@keyframes ultOrbit {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes ultShimmerSweep {
+  0%   { background-position: 220% 0; }
+  100% { background-position: -120% 0; }
+}
+
 /* CIA revealed enemy hand — readable, hoverable */
 .enemy-revealed-card {
   transform: scale(0.7);
@@ -118,11 +128,11 @@ body {
 }
 
 #root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
+  width: 100%;
+  max-width: none;
+  margin: 0;
   text-align: center;
-  border-inline: 1px solid var(--border);
+  border-inline: none;
   min-height: 100svh;
   display: flex;
   flex-direction: column;

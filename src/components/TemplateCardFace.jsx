@@ -17,6 +17,7 @@ export const CLASS_PALETTE = {
   "tech":    { accent: "#00e6c8", border: "#00e6c8", text: "#9ef4e0" },
   "neutral": { accent: "#94a3b8", border: "#445566", text: "#94a3b8" },
   "gen z":   { accent: "#a78bfa", border: "#9040c8", text: "#a78bfa" },
+  "viral":   { accent: "#e6c84a", border: "#d4af37", text: "#ffe89a" },
   "space":   { accent: "#a78bfa", border: "#c88800", text: "#a78bfa" },
   "battle":  { accent: "#f87171", border: "#c03040", text: "#f87171" },
   "meme":    { accent: "#fb923c", border: "#b85a00", text: "#fb923c" },
@@ -302,7 +303,7 @@ export default function TemplateCardFace({ card, width, height, onFrameError }) 
         fontFamily: "'Cinzel', 'Trajan Pro', serif",
         userSelect: "none",
       }}>
-        <TypeBadge type={isSpell ? "spell" : "minion"} scale={Math.max(0.6, width / 132)} />
+        {isSpell && <TypeBadge type="spell" scale={Math.max(0.6, width / 132)} />}
         <div style={{ position: "absolute", inset: frameInset, borderRadius: br, overflow: "hidden" }}>
           <div style={{
             position:   "absolute",
@@ -533,6 +534,28 @@ export default function TemplateCardFace({ card, width, height, onFrameError }) 
               scrollbarColor: `${rf.frame}66 transparent`,
             }}>
               {effectText}
+            </div>
+          ) : null}
+
+          {/* Flavor text — italic serif, visually marked as not-part-of-rules */}
+          {card.flavor && isTooltip ? (
+            <div style={{
+              width:         "86%",
+              marginTop:     4,
+              paddingTop:    4,
+              borderTop:     `1px dashed ${rf.frame}55`,
+              fontSize:      Math.max(10, descFontSize - 2),
+              fontStyle:     "italic",
+              fontFamily:    "'Crimson Text', 'Georgia', serif",
+              color:         `${classPalette.accent}`,
+              opacity:       0.82,
+              textAlign:     "center",
+              lineHeight:    1.4,
+              letterSpacing: "0.02em",
+              textShadow:    "0 1px 3px rgba(0,0,0,0.9)",
+              flexShrink:    0,
+            }}>
+              &ldquo;{card.flavor}&rdquo;
             </div>
           ) : null}
 

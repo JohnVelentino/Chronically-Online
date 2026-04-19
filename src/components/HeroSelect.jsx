@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { HEROES, CLASS_CARDS, DEFAULT_CARDS, RC } from "../data/cards.js";
+import { HEROES, CLASS_CARDS, DEFAULT_CARDS, RC, getHeroDeckIds } from "../data/cards.js";
+import { getUltimateMeta } from "../data/ultimates.js";
 
 // Small card preview used only inside HeroSelect
 function MiniCard({ card }) {
@@ -90,7 +91,7 @@ export default function HeroSelect({ onSelect }) {
     const lib = [...DEFAULT_CARDS, ...CLASS_CARDS];
     const seen = new Set();
     const cards = [];
-    for (const id of hero.deckIds) {
+    for (const id of getHeroDeckIds(hero.id)) {
       if (!seen.has(id)) {
         const c = lib.find(x => x.id === id);
         if (c) cards.push(c);
@@ -126,6 +127,13 @@ export default function HeroSelect({ onSelect }) {
       themeColor: "#00e6c8",
       glowColor: "rgba(0,230,200,0.35)",
     },
+    {
+      id: "viral",
+      label: "Viral Empire",
+      subtitle: "Main-character energy. Top G, 9yo army, and a philanthropy arc.",
+      themeColor: "#d4af37",
+      glowColor: "rgba(212,175,55,0.4)",
+    },
   ];
 
   const heroClassKey = (hero) => hero.class.toLowerCase().startsWith("usa") ? "usa" : hero.class.toLowerCase();
@@ -141,7 +149,11 @@ export default function HeroSelect({ onSelect }) {
       padding: "36px 24px 24px", boxSizing: "border-box",
       position: "relative", overflow: "hidden",
     }}>
-      <style>{`@keyframes pulse{0%,100%{opacity:0.6}50%{opacity:1}}`}</style>
+      <style>{`
+        @keyframes pulse{0%,100%{opacity:0.6}50%{opacity:1}}
+        @keyframes ultShimmer{0%{transform:translateX(-120%)}100%{transform:translateX(120%)}}
+        @keyframes ultBreathe{0%,100%{filter:drop-shadow(0 0 10px currentColor)}50%{filter:drop-shadow(0 0 22px currentColor)}}
+      `}</style>
 
       {/* Background glow matching hovered hero */}
       <div style={{
@@ -216,6 +228,7 @@ export default function HeroSelect({ onSelect }) {
               {heroesForClass.map(hero => {
                 const isHov = hovered?.id === hero.id;
                 const isPicked = chosen === hero.id;
+                const ultMeta = getUltimateMeta(hero);
                 return (
                   <motion.div
                     key={hero.id}
@@ -236,8 +249,116 @@ export default function HeroSelect({ onSelect }) {
                         : "0 4px 20px rgba(0,0,0,0.5)",
                       transition: "border-color 0.25s, background 0.25s, box-shadow 0.25s",
                       userSelect: "none",
+                      position: "relative",
+                      zIndex: isHov ? 50 : 1,
                     }}
                   >
+                    <AnimatePresence>
+                      {isHov && (
+                        <motion.div
+                          initial={{ opacity: 0, x: 18, scale: 0.9 }}
+                          animate={{ opacity: 1, x: 0, scale: 1 }}
+                          exit={{ opacity: 0, x: 18, scale: 0.9 }}
+                          transition={{ duration: 0.26, ease: [0.16, 1, 0.3, 1] }}
+                          style={{
+                            position: "absolute",
+                            left: "calc(100% + 22px)",
+                            top: -6,
+                            width: 304,
+                            borderRadius: 18,
+                            padding: 2,
+                            background: `linear-gradient(155deg, ${hero.themeColor} 0%, ${hero.themeColor}66 40%, #0a1220 100%)`,
+                            boxShadow: `0 0 0 1px ${hero.themeColor}88, 0 0 46px ${hero.glowColor}, 0 22px 56px rgba(0,0,0,0.8)`,
+                            pointerEvents: "none",
+                            zIndex: 10,
+                            overflow: "hidden",
+                          }}
+                        >
+                          {/* Inner opaque body */}
+                          <div style={{
+                            position: "relative",
+                            borderRadius: 16,
+                            background: "linear-gradient(165deg, #0f1a2e 0%, #08111f 55%, #04080f 100%)",
+                            padding: "18px 20px 16px",
+                            overflow: "hidden",
+                          }}>
+                            {/* Radial tint */}
+                            <div style={{
+                              position: "absolute", inset: 0,
+                              background: `radial-gradient(ellipse 80% 50% at 30% 0%, ${hero.themeColor}26, transparent 70%)`,
+                              pointerEvents: "none",
+                            }} />
+                            {/* Animated foil sweep */}
+                            <div style={{
+                              position: "absolute", top: 0, left: 0, width: "60%", height: "100%",
+                              background: `linear-gradient(100deg, transparent 30%, ${hero.themeColor}33 48%, ${hero.themeColor}55 50%, ${hero.themeColor}33 52%, transparent 70%)`,
+                              mixBlendMode: "screen",
+                              animation: "ultShimmer 3.4s ease-in-out infinite",
+                              pointerEvents: "none",
+                            }} />
+                            {/* Corner brackets */}
+                            <div style={{ position: "absolute", top: 7, left: 7, width: 14, height: 14, borderTop: `2px solid ${hero.themeColor}`, borderLeft: `2px solid ${hero.themeColor}`, borderTopLeftRadius: 4 }} />
+                            <div style={{ position: "absolute", top: 7, right: 7, width: 14, height: 14, borderTop: `2px solid ${hero.themeColor}`, borderRight: `2px solid ${hero.themeColor}`, borderTopRightRadius: 4 }} />
+                            <div style={{ position: "absolute", bottom: 7, left: 7, width: 14, height: 14, borderBottom: `2px solid ${hero.themeColor}`, borderLeft: `2px solid ${hero.themeColor}`, borderBottomLeftRadius: 4 }} />
+                            <div style={{ position: "absolute", bottom: 7, right: 7, width: 14, height: 14, borderBottom: `2px solid ${hero.themeColor}`, borderRight: `2px solid ${hero.themeColor}`, borderBottomRightRadius: 4 }} />
+
+                            <div style={{ position: "relative", zIndex: 2 }}>
+                              {/* Header with dividers */}
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 14 }}>
+                                <div style={{ height: 1, width: 24, background: `linear-gradient(90deg, transparent, ${hero.themeColor})` }} />
+                                <div style={{ fontSize: 9, fontWeight: 900, letterSpacing: 2.8, textTransform: "uppercase", color: hero.themeColor, textShadow: `0 0 10px ${hero.themeColor}99` }}>
+                                  ⚡ Ultimate ⚡
+                                </div>
+                                <div style={{ height: 1, width: 24, background: `linear-gradient(90deg, ${hero.themeColor}, transparent)` }} />
+                              </div>
+
+                              {/* Icon plaque + name */}
+                              <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14 }}>
+                                <div style={{
+                                  width: 58, height: 58, flexShrink: 0,
+                                  display: "flex", alignItems: "center", justifyContent: "center",
+                                  fontSize: 32,
+                                  background: `radial-gradient(circle, ${hero.themeColor}55 0%, ${hero.themeColor}15 55%, transparent 100%)`,
+                                  border: `1.5px solid ${hero.themeColor}`,
+                                  borderRadius: 14,
+                                  boxShadow: `0 0 22px ${hero.glowColor}, inset 0 0 18px ${hero.themeColor}44`,
+                                  color: hero.themeColor,
+                                  animation: "ultBreathe 2.6s ease-in-out infinite",
+                                }}>
+                                  <span style={{ filter: `drop-shadow(0 0 8px ${hero.themeColor})` }}>{ultMeta.emoji}</span>
+                                </div>
+                                <div style={{ fontSize: 17, fontWeight: 900, color: "#fff", lineHeight: 1.15, letterSpacing: 0.3, textShadow: "0 2px 8px rgba(0,0,0,0.7)" }}>
+                                  {ultMeta.name}
+                                </div>
+                              </div>
+
+                              {/* Description panel */}
+                              <div style={{
+                                fontSize: 12, color: "#eaf1fb", lineHeight: 1.55,
+                                padding: "11px 13px",
+                                background: "rgba(0,0,0,0.42)",
+                                border: `1px solid ${hero.themeColor}44`,
+                                borderRadius: 10,
+                                boxShadow: `inset 0 0 14px rgba(0,0,0,0.5)`,
+                              }}>
+                                {ultMeta.desc}
+                              </div>
+
+                              {/* Footer */}
+                              <div style={{
+                                marginTop: 12, fontSize: 8.5, fontWeight: 900, letterSpacing: 1.8,
+                                textTransform: "uppercase", color: hero.themeColor,
+                                textAlign: "center",
+                                paddingTop: 10,
+                                borderTop: `1px dashed ${hero.themeColor}55`,
+                              }}>
+                                ◆ 2 Charges · Unlocks at 5 &amp; 10 Aura ◆
+                              </div>
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                     <div style={{
                       width: 96, height: 96, fontSize: 72, textAlign: "center", margin: "0 auto 14px",
                       filter: isHov ? `drop-shadow(0 0 24px ${hero.themeColor})` : "none",

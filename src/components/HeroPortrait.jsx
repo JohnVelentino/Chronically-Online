@@ -1,7 +1,7 @@
 // 1.7x bigger portrait (88→150px), "AP" → "Aura Points"
 import { useState, useEffect, useRef } from "react";
 
-export default function HeroPortrait({ name, hp, maxHp, emoji, portrait, isAI, isTarget, onClick, mana, maxMana, armor = 0, ultimateInfo = null, onUltimateClick, heroRef, showName = true }) {
+export default function HeroPortrait({ name, hp, maxHp, emoji, portrait, isAI, isTarget, onClick, mana, maxMana, armor = 0, ultimateInfo = null, onUltimateClick, heroRef, showName = true, size = 160 }) {
   const [flashing, setFlashing] = useState(false);
   const [portraitFailed, setPortraitFailed] = useState(false);
   const prevHp = useRef(hp);
@@ -76,7 +76,7 @@ export default function HeroPortrait({ name, hp, maxHp, emoji, portrait, isAI, i
       )}
       <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
       <div style={{
-        width: 150, height: 150, borderRadius: 26,
+        width: size, height: size, borderRadius: 26,
         background: isAI ? "linear-gradient(160deg,#1a0606,#280e0e)" : "linear-gradient(160deg,#061a06,#0e2810)",
         border: isTarget ? "3px solid #5DCAA5" : isLow ? "3px solid #E24B4A" : "3px solid " + (isAI ? "#cc4444" : "#44cc88"),
         display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
@@ -98,9 +98,6 @@ export default function HeroPortrait({ name, hp, maxHp, emoji, portrait, isAI, i
           <div style={{ fontSize: 68 }}>{emoji}</div>
         )}
         <div style={{ fontSize: 30, fontWeight: 900, color: isLow ? "#E24B4A" : (isAI ? "#ff8888" : "#44ff99"), lineHeight: 1 }}>{hp}</div>
-        <div style={{ position: "absolute", bottom: 6, left: 8, right: 8, height: 5, background: "#111", borderRadius: 3 }}>
-          <div style={{ width: "100%", height: "100%", background: isLow ? "#E24B4A" : (isAI ? "#cc4444" : "#44cc88"), borderRadius: 3, transform: `scaleX(${pct})`, transformOrigin: "left center", transition: "transform 0.4s" }} />
-        </div>
       </div>
       {!isAI && ultimateInfo && (
         <div style={{ position: "relative", marginLeft: 8 }}>
