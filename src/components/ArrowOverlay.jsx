@@ -8,16 +8,15 @@ export default function ArrowOverlay({ fromRef, toRef, cursor, color }) {
     function measure() {
       if (!active) return;
       if (!fromRef?.current) { rafId = requestAnimationFrame(measure); return; }
-      // Batch all DOM reads together before any writes
+      // SVG is position:fixed — use viewport coords, no scroll offset.
       const from = fromRef.current.getBoundingClientRect();
       const toRect = toRef?.current ? toRef.current.getBoundingClientRect() : null;
-      const scrollY = window.scrollY;
       const x1 = from.left + from.width / 2;
-      const y1 = from.top + scrollY + from.height / 2;
+      const y1 = from.top + from.height / 2;
       let x2 = x1, y2 = y1;
       if (toRect) {
         x2 = toRect.left + toRect.width / 2;
-        y2 = toRect.top + scrollY + toRect.height / 2;
+        y2 = toRect.top + toRect.height / 2;
       } else if (cursor) {
         x2 = cursor.x;
         y2 = cursor.y;

@@ -106,24 +106,15 @@ function resolveAiUltimate(gs, heroId) {
     log.push("🤖 AI runs THE ZUCK!", `Copied ${cloneCount} of your minions. Your cards +1 next turn. AI hand −1 permanently.`);
   } else if (heroId === "mrbeast") {
     ng = destroyAllMinions(ng, "ai");
-    const contestant = { id: "contestant", name: "Contestant", type: "minion", cost: 3, rarity: "common", class: "Viral", atk: 3, hp: 3, emoji: "🎮", keywords: [], desc: "A Squid Game contestant." };
+    const makeContestant = (n) => createMinionEntity({ id: "contestant", name: `Contestant ${String(n).padStart(2, "0")}`, type: "minion", cost: 3, rarity: "common", class: "Viral", atk: 3, hp: 3, emoji: "🎮", keywords: [], desc: "A Squid Game contestant. Only one survives.", isContestant: true });
+    let num = 1;
     for (let i = 0; i < 4; i++) {
       if (ng.ai.board.length >= 7) break;
-      ng = { ...ng, ai: { ...ng.ai, board: [...ng.ai.board, createMinionEntity(contestant)] } };
+      ng = { ...ng, ai: { ...ng.ai, board: [...ng.ai.board, makeContestant(num++)] } };
     }
     for (let i = 0; i < 3; i++) {
       if (ng.player.board.length >= 7) break;
-      ng = { ...ng, player: { ...ng.player, board: [...ng.player.board, createMinionEntity(contestant)] } };
-    }
-    if (ng.ai.board.length > 0) {
-      const survivorIdx = Math.floor(Math.random() * ng.ai.board.length);
-      ng = {
-        ...ng,
-        ai: {
-          ...ng.ai,
-          board: ng.ai.board.map((m, i) => i === survivorIdx ? createMinionEntity({ ...m, id: "survivor", name: "Survivor", atk: m.atk + 10, hp: m.hp + 10, maxHp: (m.maxHp ?? m.hp) + 10, emoji: "🏆", rarity: "legendary", keywords: ["charge"], desc: "Charge." }) : m),
-        },
-      };
+      ng = { ...ng, player: { ...ng.player, board: [...ng.player.board, makeContestant(num++)] } };
     }
     ng = {
       ...ng,
@@ -135,7 +126,7 @@ function resolveAiUltimate(gs, heroId) {
     if (beastGames && ng.ai.hand.length < 10) {
       ng = { ...ng, ai: { ...ng.ai, hand: [...ng.ai.hand, { ...beastGames, uid: mkUid() }] } };
     }
-    log.push("🎯 AI triggers Squid Game Charity!", "Board wiped. 7 Contestants. Survivor crowned. +20 Armor both.");
+    log.push("🎯 AI triggers Squid Game Charity!", "Board wiped. 7 Contestants. Last one standing becomes the Survivor. +20 Armor both.");
   }
   ng = {
     ...ng,

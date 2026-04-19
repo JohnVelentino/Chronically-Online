@@ -317,6 +317,8 @@ export const EXPANSION_CARDS = [
 ];
 
 export const CARD_EFFECT_OVERRIDES = {
+  maya: { effectId: "maya", effectConfig: { on_death: { type: "summon_token", token: { id: "maya_token", name: "Maya", atk: 1, hp: 1, class: "Viral", keywords: [] } } } },
+  stephano: { effectId: "stephano", keywords: ["aura_other_friendly_attack_1"] },
   locked_in: { effectId: "locked_in", effectConfig: { battlecry: { type: "gain_mana_next_turn", amount: 1 } } },
   npc_crowd: { effectId: "npc_crowd", effectConfig: { battlecry: { type: "summon_token", count: 2, token: { id: "npc_token", name: "NPC", atk: 1, hp: 1, class: "neutral", keywords: [] } } } },
   viral_clip: { effectId: "viral_clip", targetType: "none" },

@@ -170,7 +170,7 @@ function resolveDeaths(gs, sourceSide, log = []) {
   let next = gs;
   while (true) {
     const dead = extractDeadMinions(next);
-    if (!dead.length) return recalculateAuras(next);
+    if (!dead.length) return promoteSurvivorIfSolo(recalculateAuras(next), log);
     next = removeDeadMinions(next);
 
     for (const { side, minion } of dead) {
@@ -181,6 +181,40 @@ function resolveDeaths(gs, sourceSide, log = []) {
       }
     }
   }
+}
+
+function promoteSurvivorIfSolo(gs, log = []) {
+  const all = [
+    ...gs.player.board.map(m => ({ side: "player", m })),
+    ...gs.ai.board.map(m => ({ side: "ai", m })),
+  ];
+  const contestants = all.filter(x => x.m.isContestant);
+  if (contestants.length !== 1) return gs;
+  const { side, m } = contestants[0];
+  const promoted = normalizeMinionStats({
+    ...m,
+    id: "survivor",
+    name: "Survivor",
+    isContestant: false,
+    baseAtk: (m.baseAtk ?? m.atk ?? 3) + 10,
+    hp: m.hp + 10,
+    maxHp: (m.maxHp ?? m.hp) + 10,
+    emoji: "🏆",
+    rarity: "legendary",
+    keywords: Array.from(new Set([...(m.keywords || []), "charge"])),
+    desc: "Charge. Winner winner.",
+    summoningSick: false,
+    canAttack: true,
+    attacksRemaining: 1,
+  });
+  log.push("🏆 SURVIVOR! Winner winner chicken dinner.");
+  return recalculateAuras({
+    ...gs,
+    [side]: {
+      ...gs[side],
+      board: gs[side].board.map(x => (x.uid === m.uid ? promoted : x)),
+    },
+  });
 }
 
 export function drawCards(gs, side, amount) {
@@ -426,6 +460,60 @@ export function grantImmediateAttack(gs, minionUid, targetMode = "any", attacks 
   return next;
 }
 
+export function silenceMinion(gs, minionUid, sourceSide = "player") {
+  let next = gs;
+  ["player", "ai"].forEach(side => {
+    if (!next[side].board.some(m => m.uid === minionUid)) return;
+    next = updateMinion(next, side, minionUid, m => normalizeMinionStats({
+      ...m,
+      keywords: [],
+      tempAttackBonus: 0,
+      auraAttackBonus: 0,
+      frozenNextTurn: true,
+      desc: "Silenced. Can't attack next turn.",
+    }));
+  });
+  return resolveDeaths(recalculateAuras(next), sourceSide);
+}
+
+export function bounceMinionToHand(gs, minionUid, costDelta = 0, sourceSide = "player") {
+  let next = gs;
+  let ownerSide = null;
+  let minion = null;
+  ["player", "ai"].forEach(side => {
+    const found = next[side].board.find(m => m.uid === minionUid);
+    if (found) { ownerSide = side; minion = found; }
+  });
+  if (!ownerSide || !minion) return gs;
+  const owner = next[ownerSide];
+  if (owner.hand.length >= 10) {
+    return destroyMinion(next, minionUid, sourceSide);
+  }
+  const cleanCard = {
+    id: minion.id,
+    name: minion.name,
+    cost: Math.max(0, (minion.cost || 0) + costDelta),
+    atk: minion.baseAtk ?? minion.atk ?? 0,
+    hp: minion.maxHp ?? minion.hp ?? 1,
+    type: "minion",
+    rarity: minion.rarity || "common",
+    class: minion.class || "neutral",
+    keywords: Array.isArray(minion.keywords) ? [...minion.keywords] : [],
+    desc: minion.desc || "",
+    emoji: minion.emoji || "",
+    uid: mkUid(),
+  };
+  next = {
+    ...next,
+    [ownerSide]: {
+      ...owner,
+      hand: [...owner.hand, cleanCard],
+      board: owner.board.filter(m => m.uid !== minionUid),
+    },
+  };
+  return recalculateAuras(next);
+}
+
 export function destroyMinion(gs, minionUid, sourceSide = "player") {
   let next = gs;
   ["player", "ai"].forEach(side => {
@@ -641,13 +729,25 @@ export function startTurn(gs, side) {
     ...gs,
     [side]: {
       ...gs[side],
-      board: gs[side].board.map(m => ({
-        ...normalizeMinionStats(m),
-        summoningSick: false,
-        canAttack: true,
-        attacksRemaining: m.attacksRemaining && m.attacksRemaining > 1 ? m.attacksRemaining : 1,
-        rushOnlyThisTurn: false,
-      })),
+      board: gs[side].board.map(m => {
+        if (m.frozenNextTurn) {
+          return {
+            ...normalizeMinionStats(m),
+            summoningSick: false,
+            canAttack: false,
+            attacksRemaining: 0,
+            rushOnlyThisTurn: false,
+            frozenNextTurn: false,
+          };
+        }
+        return {
+          ...normalizeMinionStats(m),
+          summoningSick: false,
+          canAttack: true,
+          attacksRemaining: m.attacksRemaining && m.attacksRemaining > 1 ? m.attacksRemaining : 1,
+          rushOnlyThisTurn: false,
+        };
+      }),
     },
   });
 }
@@ -974,6 +1074,55 @@ export function applySpell(effect, targetId, gs, side, sourceCard = null) {
   } else if (effect === "refresh_ult_plus_aura2") {
     gs = { ...gs, [side]: { ...gs[side], ultimateUses: Math.max(0, (gs[side].ultimateUses || 0) - 1), tempAuraBonus: (gs[side].tempAuraBonus || 0) + 2, mana: Math.min(10, (gs[side].mana || 0) + 2) } };
     log.push("Ult refreshed. +2 Aura this turn.");
+  } else if (effect === "peek_enemy_deck_3_draw1") {
+    const preview = gs[enemy].deck.slice(0, 3).map(c => c.id);
+    gs = { ...gs, visibility: { ...(gs.visibility || {}), enemyDeckPeek: preview } };
+    gs = drawCards(gs, side, 1);
+    log.push("Peeked top 3 of enemy deck. Drew 1.");
+  } else if (effect === "prism_protocol") {
+    gs = revealHand(gs, enemy, "turn");
+    gs = copyRandomCardFromHand(gs, enemy, side);
+    log.push("Revealed enemy hand. Copied a random card.");
+  } else if (effect === "sacrifice_draw2") {
+    if (targetId) gs = destroyMinion(gs, targetId, side);
+    gs = drawCards(gs, side, 2);
+    log.push("Sacrificed. Drew 2.");
+  } else if (effect === "hawaii_bunker") {
+    const p = gs[side];
+    gs = { ...gs, [side]: { ...p, hp: Math.min(p.maxHp, p.hp + 10), armor: (p.armor || 0) + 5 } };
+    gs = drawCards(gs, side, 1);
+    log.push("+10 HP, +5 Armor. Drew 1.");
+  } else if (effect === "algo_tweak") {
+    const eh = gs[enemy].hand;
+    if (eh.length > 0) {
+      const d1 = pickRandom(eh);
+      let remaining = eh.filter(c => c.uid !== d1.uid);
+      const d2 = remaining.length ? pickRandom(remaining) : null;
+      remaining = d2 ? remaining.filter(c => c.uid !== d2.uid) : remaining;
+      gs = { ...gs, [enemy]: { ...gs[enemy], hand: remaining } };
+    }
+    gs = { ...gs, [side]: { ...gs[side], pendingNextCardDiscount: (gs[side].pendingNextCardDiscount || 0) + 2 } };
+    log.push("Enemy discarded 2. Next card -2 cost.");
+  } else if (effect === "grant_dshield_stealth") {
+    if (targetId) {
+      ["player", "ai"].forEach(s => {
+        if (gs[s].board.find(m => m.uid === targetId)) {
+          gs = updateMinion(gs, s, targetId, m => {
+            const kw = Array.isArray(m.keywords) ? [...m.keywords] : [];
+            if (!kw.includes("divine_shield")) kw.push("divine_shield");
+            if (!kw.includes("elusive")) kw.push("elusive");
+            return normalizeMinionStats({ ...m, keywords: kw });
+          });
+        }
+      });
+    }
+    log.push("Divine Shield + Stealth.");
+  } else if (effect === "silence_freeze") {
+    if (targetId) gs = silenceMinion(gs, targetId, side);
+    log.push("Silenced. Can't attack next turn.");
+  } else if (effect === "bounce_cost_plus3") {
+    if (targetId) gs = bounceMinionToHand(gs, targetId, 3, side);
+    log.push("Bounced. Costs (3) more.");
   } else if (effect === "beast_games") {
     const casts = (gs[side].beastGamesCasts || 0) + 1;
     if (casts < 2) {
@@ -1089,6 +1238,41 @@ export function playBattlecry(card, gs, side) {
   if (kw.includes("copy_enemy_card") || kw.includes("copy_enemy_hand_card")) {
     gs = copyRandomCardFromHand(gs, enemy, side);
     log.push("Copied a card from enemy hand.");
+  }
+  if (kw.includes("draw_viral") || kw.includes("draw_viral_discount1")) {
+    const deck = gs[side].deck;
+    const viralIdx = deck.findIndex(c => c.class === "Viral");
+    if (viralIdx >= 0 && gs[side].hand.length < 10) {
+      const picked = deck[viralIdx];
+      const newDeck = deck.filter((_, i) => i !== viralIdx);
+      const drawn = kw.includes("draw_viral_discount1")
+        ? { ...picked, cost: Math.max(0, (picked.cost || 0) - 1) }
+        : picked;
+      gs = { ...gs, [side]: { ...gs[side], deck: newDeck, hand: [...gs[side].hand, drawn] } };
+      log.push(kw.includes("draw_viral_discount1") ? "Drew a Viral card (-1 cost)." : "Drew a Viral card.");
+    } else {
+      gs = drawCards(gs, side, 1);
+      log.push("Drew a card.");
+    }
+  }
+  if (kw.includes("plus1_aura_turn")) {
+    gs = { ...gs, [side]: { ...gs[side], tempAuraBonus: (gs[side].tempAuraBonus || 0) + 1, mana: Math.min(10, (gs[side].mana || 0) + 1) } };
+    log.push("+1 Aura this turn.");
+  }
+  if (kw.includes("reveal_enemy_card")) {
+    const eh = gs[enemy].hand;
+    if (eh.length > 0) {
+      const picked = pickRandom(eh);
+      const revealed = (gs.visibility?.revealedEnemyCardUids || []);
+      gs = { ...gs, visibility: { ...(gs.visibility || {}), revealedEnemyCardUids: [...revealed, picked.uid] } };
+      log.push(`Revealed: ${picked.name}.`);
+    }
+  }
+  if (kw.includes("damage2_any")) {
+    const targets = ["hero_" + enemy, ...gs[enemy].board.map(m => m.uid)];
+    const tid = pickRandom(targets);
+    if (tid) gs = dealDamage(gs, tid, 2, side);
+    log.push("2 damage.");
   }
 
   const triggerActions = getTriggerActions(card, "battlecry");

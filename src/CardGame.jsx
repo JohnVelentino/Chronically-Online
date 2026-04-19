@@ -592,7 +592,7 @@ export default function App() {
       return;
     }
     if (tgtSpell) {
-      if (tgtSpell.targetType === "minion" || tgtSpell.targetType === "any") castSpell(tgtSpell, uid);
+      if (tgtSpell.targetType === "minion" || tgtSpell.targetType === "any" || tgtSpell.targetType === "minion_friendly") castSpell(tgtSpell, uid);
       return;
     }
     if (selAtk === uid) {
@@ -852,24 +852,15 @@ export default function App() {
       pushLog(["🤖 THE ZUCK!", `Copied ${cloneCount} enemy minion(s). Their cards +1 next turn. Your hand −1 permanently.`]);
     } else if (meta.id === "mrbeast") {
       ng = destroyAllMinions(ng, "player");
-      const contestant = { id: "contestant", name: "Contestant", type: "minion", cost: 3, rarity: "common", class: "Viral", atk: 3, hp: 3, emoji: "🎮", keywords: [], desc: "A Squid Game contestant." };
+      const makeContestant = (n) => createMinionEntity({ id: "contestant", name: `Contestant ${String(n).padStart(2, "0")}`, type: "minion", cost: 3, rarity: "common", class: "Viral", atk: 3, hp: 3, emoji: "🎮", keywords: [], desc: "A Squid Game contestant. Only one survives.", isContestant: true });
+      let num = 1;
       for (let i = 0; i < 4; i++) {
         if (ng.player.board.length >= 7) break;
-        ng = { ...ng, player: { ...ng.player, board: [...ng.player.board, createMinionEntity(contestant)] } };
+        ng = { ...ng, player: { ...ng.player, board: [...ng.player.board, makeContestant(num++)] } };
       }
       for (let i = 0; i < 3; i++) {
         if (ng.ai.board.length >= 7) break;
-        ng = { ...ng, ai: { ...ng.ai, board: [...ng.ai.board, createMinionEntity(contestant)] } };
-      }
-      if (ng.player.board.length > 0) {
-        const survivorIdx = Math.floor(Math.random() * ng.player.board.length);
-        ng = {
-          ...ng,
-          player: {
-            ...ng.player,
-            board: ng.player.board.map((m, i) => i === survivorIdx ? createMinionEntity({ ...m, id: "survivor", name: "Survivor", atk: m.atk + 10, hp: m.hp + 10, maxHp: (m.maxHp ?? m.hp) + 10, emoji: "🏆", rarity: "legendary", keywords: ["charge"], desc: "Charge. The last one standing." }) : m),
-          },
-        };
+        ng = { ...ng, ai: { ...ng.ai, board: [...ng.ai.board, makeContestant(num++)] } };
       }
       ng = {
         ...ng,
@@ -881,7 +872,7 @@ export default function App() {
       if (beastGames && ng.player.hand.length < 10) {
         ng = { ...ng, player: { ...ng.player, hand: [...ng.player.hand, { ...beastGames, uid: mkUid() }] } };
       }
-      pushLog(["🎯 SQUID GAME CHARITY!", "Board wiped. 7 Contestants in arena. Survivor crowned. +20 Armor both heroes."]);
+      pushLog(["🎯 SQUID GAME CHARITY!", "Board wiped. 7 Contestants in arena. Last one standing becomes the Survivor. +20 Armor both heroes."]);
     } else {
       toast("This hero has no ultimate configured.");
       return;
@@ -1162,7 +1153,7 @@ export default function App() {
     pointerRafRef.current = requestAnimationFrame(() => {
       pointerRafRef.current = null;
       const point = { x: cx, y: cy, yPage: cy + window.scrollY };
-      setCursorPos({ x: point.x, y: point.yPage });
+      setCursorPos({ x: point.x, y: point.y });
       if (selCard && !tgtSpell && !selAtk) {
         // getBoundingClientRect read is batched here, after all paints settle
         const inZone = isPointInPlayZone(point);
@@ -1556,7 +1547,7 @@ export default function App() {
                   key={m.uid} minion={m} minionRef={ref}
                   cardW={playerSize.w} cardH={playerSize.h} showBreathing={showBreathing}
                   isSelected={selAtk === m.uid}
-                  isTarget={!!(tgtSpell && (tgtSpell.targetType === "minion" || tgtSpell.targetType === "any"))}
+                  isTarget={!!(tgtSpell && (tgtSpell.targetType === "minion" || tgtSpell.targetType === "any" || tgtSpell.targetType === "minion_friendly"))}
                   isAttacking={attackVisual?.attacker === m.uid}
                   isDefending={attackVisual?.defender === m.uid}
                   impactKey={attackVisual?.key}
