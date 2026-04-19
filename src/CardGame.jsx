@@ -137,6 +137,8 @@ export default function App() {
   const [enemyBoardW, setEnemyBoardW] = useState(1200);
   const [ultHover, setUltHover] = useState(false);
   const ultBtnRef = useRef(null);
+  const [enemyUltHover, setEnemyUltHover] = useState(false);
+  const enemyUltBtnRef = useRef(null);
   const pointerRafRef = useRef(null);
   const [canvasScale, setCanvasScale] = useState(1);
 
@@ -1435,7 +1437,11 @@ export default function App() {
             const isReady = aiUltStatus === "READY";
             const isSpent = aiUltStatus === "SPENT";
             return (
-              <div style={{ position: "absolute", left: 270, top: "50%", transform: "translateY(-50%)", display: "flex", flexDirection: "column", alignItems: "center", gap: 5, pointerEvents: "none" }}>
+              <div
+                ref={enemyUltBtnRef}
+                onMouseEnter={() => setEnemyUltHover(true)}
+                onMouseLeave={() => setEnemyUltHover(false)}
+                style={{ position: "absolute", left: 270, top: "50%", transform: "translateY(-50%)", display: "flex", flexDirection: "column", alignItems: "center", gap: 5, cursor: "help" }}>
                 <div style={{
                   position: "relative",
                   width: 82, height: 92,
@@ -1754,6 +1760,20 @@ export default function App() {
               usedCharges={gs.player.ultimateUses || 0}
               maxCharges={ULTIMATE_USE_MAX}
               anchorRect={ultBtnRef.current?.getBoundingClientRect()}
+            />
+          )}
+        </AnimatePresence>
+
+        {/* Enemy ultimate tooltip */}
+        <AnimatePresence>
+          {enemyUltHover && gs?.ai && aiUltimateMeta && (
+            <UltimateTooltip
+              meta={aiUltimateMeta}
+              unlockedCharges={aiUnlockedUltCharges}
+              usedCharges={aiUltUsed}
+              maxCharges={ULTIMATE_USE_MAX}
+              anchorRect={enemyUltBtnRef.current?.getBoundingClientRect()}
+              placement="right"
             />
           )}
         </AnimatePresence>

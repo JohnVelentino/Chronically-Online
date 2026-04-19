@@ -3,13 +3,19 @@ import { motion } from "framer-motion";
 
 const RARITY_GLOW = "rgba(250,199,117,0.55)";
 
-export default function UltimateTooltip({ meta, unlockedCharges, usedCharges, maxCharges, anchorRect }) {
+export default function UltimateTooltip({ meta, unlockedCharges, usedCharges, maxCharges, anchorRect, placement = "left" }) {
   if (!meta || !anchorRect) return null;
 
   const cardW = 200;
   const cardH = 280;
-  const left = Math.max(12, anchorRect.left - cardW - 16);
-  const top = Math.max(12, anchorRect.top + anchorRect.height / 2 - cardH / 2);
+  const vw = typeof window !== "undefined" ? window.innerWidth : 1920;
+  const vh = typeof window !== "undefined" ? window.innerHeight : 1080;
+  const rawLeft = placement === "right"
+    ? anchorRect.right + 16
+    : anchorRect.left - cardW - 16;
+  const left = Math.min(vw - cardW - 12, Math.max(12, rawLeft));
+  const rawTop = anchorRect.top + anchorRect.height / 2 - cardH / 2;
+  const top = Math.min(vh - cardH - 12, Math.max(12, rawTop));
 
   const pips = Array.from({ length: maxCharges }).map((_, i) => {
     const isUsed = i < usedCharges;
