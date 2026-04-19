@@ -1,14 +1,16 @@
 // ── HERO DEFINITIONS ─────────────────────────────────────────────────────────
-// Place local images under public/assets/... and reference with:
-// /assets/cards/... , /assets/heroes/... , /assets/card-backs/...
+// Place local images under public/assets/... and reference via ASSET() so the
+// GH Pages subpath (import.meta.env.BASE_URL) is honored in production.
 // Each hero has: id, name, class, emoji, portrait?, cardBack?, bio, themeColor, deckIds (20 cards)
+const ASSET = (p) => `${import.meta.env.BASE_URL}${p.replace(/^\//, "")}`;
+
 export const HEROES = [
   {
     id: "trump",
     name: "Donald Trump",
     class: "USA!",
     emoji: "🇺🇸",
-    portrait: null,
+    portrait: ASSET("assets/heroes/trump.png"),
     cardBack: null,
     bio: "Make this hand great again. Plays big, talks bigger.",
     themeColor: "#cc2222",
@@ -25,7 +27,7 @@ export const HEROES = [
     name: "CIA",
     class: "USA!",
     emoji: "🕵️",
-    portrait: null,
+    portrait: ASSET("assets/heroes/cia.png"),
     cardBack: null,
     bio: "Black-budget ops, classified memes, and absolutely nothing under Antarctica.",
     themeColor: "#6dc6d6",
@@ -41,7 +43,7 @@ export const HEROES = [
     name: "Elon Musk",
     class: "Tech",
     emoji: "🚀",
-    portrait: null,
+    portrait: ASSET("assets/heroes/elon.png"),
     cardBack: null,
     bio: "Move fast. Break things. Fire everyone. Post at 3am.",
     themeColor: "#00e6c8",
@@ -58,7 +60,7 @@ export const HEROES = [
     name: "Mark Zuckerberg",
     class: "Tech",
     emoji: "🦎",
-    portrait: null,
+    portrait: ASSET("assets/heroes/zuck.png"),
     cardBack: null,
     bio: "Friends list harvested. Privacy policy updated. Blinking is optional.",
     themeColor: "#4ac29a",
@@ -74,7 +76,7 @@ export const HEROES = [
     name: "Andrew Tate",
     class: "Viral",
     emoji: "👊",
-    portrait: null,
+    portrait: ASSET("assets/heroes/tate.png"),
     cardBack: null,
     bio: "Top G. What color is your Bugatti? Escape the matrix, brokie.",
     themeColor: "#d4af37",
@@ -90,7 +92,7 @@ export const HEROES = [
     name: "PewDiePie",
     class: "Viral",
     emoji: "🎮",
-    portrait: null,
+    portrait: ASSET("assets/heroes/pewdiepie.png"),
     cardBack: null,
     bio: "Bro Army, assemble. 9-year-olds rise up. T-Series can catch these hands.",
     themeColor: "#2f64ff",
@@ -106,7 +108,7 @@ export const HEROES = [
     name: "MrBeast",
     class: "Viral",
     emoji: "🎯",
-    portrait: null,
+    portrait: ASSET("assets/heroes/mrbeast.png"),
     cardBack: null,
     bio: "Philanthropy arc locked in. Subscribe or get squid-gamed, no cap.",
     themeColor: "#2ecc71",
