@@ -120,7 +120,7 @@ export default function HeroSelect({ onSelect }) {
       glowColor: "rgba(204,34,34,0.35)",
     },
     {
-      id: "elon",
+      id: "tech",
       label: "Tech",
       subtitle: "Rocket chaos, tech flexing, and posting through the apocalypse.",
       themeColor: "#00e6c8",

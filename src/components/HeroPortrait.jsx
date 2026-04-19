@@ -74,37 +74,7 @@ export default function HeroPortrait({ name, hp, maxHp, emoji, portrait, isAI, i
           </div>
         </div>
       )}
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-      {!isAI && ultimateInfo && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onUltimateClick?.(); }}
-          disabled={!ultimateInfo.canUse}
-          style={{
-            width: 122,
-            minHeight: 86,
-            background: ultButtonStyle.bg,
-            border: `2px solid ${ultButtonStyle.border}`,
-            color: ultButtonStyle.text,
-            borderRadius: 14,
-            padding: "10px 9px",
-            fontSize: 12,
-            fontWeight: 900,
-            cursor: ultimateInfo.canUse ? "pointer" : "not-allowed",
-            letterSpacing: 0.6,
-            textTransform: "uppercase",
-            boxShadow: ultButtonStyle.glow,
-            display: "flex",
-            flexDirection: "column",
-            justifyContent: "center",
-            alignItems: "center",
-            gap: 5,
-            transition: "transform 0.15s, box-shadow 0.2s",
-          }}
-        >
-          <span style={{ fontSize: 11, lineHeight: 1.1 }}>{ultimateInfo.buttonLabel}</span>
-          <span style={{ fontSize: 9, opacity: 0.9 }}>{availableCharges}/2</span>
-        </button>
-      )}
+      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
       <div style={{
         width: 150, height: 150, borderRadius: 26,
         background: isAI ? "linear-gradient(160deg,#1a0606,#280e0e)" : "linear-gradient(160deg,#061a06,#0e2810)",
@@ -132,6 +102,65 @@ export default function HeroPortrait({ name, hp, maxHp, emoji, portrait, isAI, i
           <div style={{ width: "100%", height: "100%", background: isLow ? "#E24B4A" : (isAI ? "#cc4444" : "#44cc88"), borderRadius: 3, transform: `scaleX(${pct})`, transformOrigin: "left center", transition: "transform 0.4s" }} />
         </div>
       </div>
+      {!isAI && ultimateInfo && (
+        <div style={{ position: "relative", marginLeft: 8 }}>
+          {ultimateInfo.canUse && (
+            <div
+              aria-hidden
+              style={{
+                position: "absolute", inset: -10, borderRadius: 22,
+                background: `radial-gradient(circle, ${ultButtonStyle.border}55 0%, transparent 70%)`,
+                animation: "ultimatePulse 1.8s ease-in-out infinite",
+                pointerEvents: "none", zIndex: 0,
+              }}
+            />
+          )}
+          <button
+            onClick={(e) => { e.stopPropagation(); onUltimateClick?.(); }}
+            disabled={!ultimateInfo.canUse}
+            style={{
+              position: "relative", zIndex: 1,
+              width: 128,
+              minHeight: 92,
+              background: ultButtonStyle.bg,
+              border: `2px solid ${ultButtonStyle.border}`,
+              color: ultButtonStyle.text,
+              borderRadius: 16,
+              padding: "10px 9px",
+              fontSize: 12,
+              fontWeight: 900,
+              cursor: ultimateInfo.canUse ? "pointer" : "not-allowed",
+              letterSpacing: 0.6,
+              textTransform: "uppercase",
+              boxShadow: ultimateInfo.canUse
+                ? `${ultButtonStyle.glow}, inset 0 1px 0 rgba(255,255,255,0.35), inset 0 -2px 6px rgba(0,0,0,0.35)`
+                : "inset 0 1px 0 rgba(255,255,255,0.04)",
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "center",
+              alignItems: "center",
+              gap: 5,
+              transition: "transform 0.15s, box-shadow 0.2s",
+              overflow: "hidden",
+            }}
+          >
+            {ultimateInfo.canUse && (
+              <span
+                aria-hidden
+                style={{
+                  position: "absolute", top: 0, left: "-60%", width: "60%", height: "100%",
+                  background: "linear-gradient(115deg, transparent 0%, rgba(255,255,255,0.55) 50%, transparent 100%)",
+                  animation: "ultimateShimmer 2.6s ease-in-out infinite",
+                  pointerEvents: "none",
+                }}
+              />
+            )}
+            <span style={{ position: "relative", fontSize: 18, lineHeight: 1, filter: ultimateInfo.canUse ? "drop-shadow(0 0 6px rgba(255,255,255,0.55))" : "none" }}>★</span>
+            <span style={{ position: "relative", fontSize: 10, lineHeight: 1.1, textAlign: "center" }}>{ultimateInfo.buttonLabel}</span>
+            <span style={{ position: "relative", fontSize: 9, opacity: 0.9 }}>{availableCharges}/2</span>
+          </button>
+        </div>
+      )}
       </div>
       {showName && <div style={{ fontSize: 11, color: "#445", fontWeight: 700 }}>{name}</div>}
       {!isAI && Number.isFinite(mana) && Number.isFinite(maxMana) && (

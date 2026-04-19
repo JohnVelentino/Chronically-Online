@@ -379,7 +379,8 @@ export default function App() {
       player: { ...initPlayer(heroName, false, heroDeck), heroId: hero?.id || null, maxMana: 1, mana: 1, armor: 0, ultimateUses: 0, ultimateUsedThisTurn: false, emoji: heroEmoji, portrait: heroPortrait, cardBack: heroCardBack },
       ai: { ...initPlayer(aiHero.name, true, aiDeck), heroId: aiHero.id, maxMana: 0, mana: 0, armor: 0, ultimateUses: 0, ultimateUsedThisTurn: false, portrait: getHeroPortraitFromStorage(aiHero), cardBack: aiHero.cardBack || null, emoji: aiHero.emoji },
     });
-    setPhase("mulligan");
+    const rulesSeen = (() => { try { return localStorage.getItem("co_rules_seen_v1") === "1"; } catch { return false; } })();
+    setPhase(rulesSeen ? "mulligan" : "rules");
     setLog(["🎮 Game on! No cap."]);
     setWinner(null);
     setSelCard(null);
@@ -1722,6 +1723,12 @@ export default function App() {
       )}
 
       <AnimatePresence>
+        {phase === "rules" && (
+          <RulesScreen
+            key="rules-screen"
+            onContinue={() => setPhase("mulligan")}
+          />
+        )}
         {phase === "mulligan" && gs && (
           <MulliganScreen
             key="mulligan-screen"
@@ -1730,15 +1737,8 @@ export default function App() {
               if (uids.length) {
                 setGs(prev => ({ ...prev, player: mulliganHand(prev.player, uids) }));
               }
-              const rulesSeen = (() => { try { return localStorage.getItem("co_rules_seen_v1") === "1"; } catch { return false; } })();
-              setPhase(rulesSeen ? "player_turn" : "rules");
+              setPhase("player_turn");
             }}
-          />
-        )}
-        {phase === "rules" && (
-          <RulesScreen
-            key="rules-screen"
-            onContinue={() => setPhase("player_turn")}
           />
         )}
       </AnimatePresence>

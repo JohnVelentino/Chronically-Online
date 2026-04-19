@@ -65,19 +65,34 @@ export default function MulliganScreen({ hand, onConfirm }) {
                 onClick={() => toggle(card.uid)}
                 style={{
                   position: "relative", cursor: "pointer",
-                  filter: isSelected ? "grayscale(0.4) brightness(0.7)" : "none",
+                  filter: isSelected ? "grayscale(0.5) brightness(0.55)" : "none",
                   transition: "filter 0.2s ease",
                 }}
               >
-                <HandCard card={card} selected={false} disabled={false} onClick={() => toggle(card.uid)} dragEnabled={false} width={140} height={204} />
+                <div style={{ pointerEvents: "none" }}>
+                  <HandCard card={card} selected={false} disabled={false} onClick={() => {}} dragEnabled={false} width={140} height={204} />
+                </div>
                 {isSelected && (
-                  <div style={{
-                    position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center",
-                    background: "rgba(226,75,74,0.2)", border: "3px solid #E24B4A", borderRadius: 14,
-                    pointerEvents: "none",
-                  }}>
-                    <div style={{ fontSize: 72, color: "#E24B4A", fontWeight: 900, textShadow: "0 4px 18px rgba(0,0,0,0.8)" }}>✕</div>
-                  </div>
+                  <motion.div
+                    initial={{ scale: 0.4, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ type: "spring", stiffness: 420, damping: 18 }}
+                    style={{
+                      position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                      background: "rgba(226,75,74,0.28)",
+                      border: "4px solid #ff5a58",
+                      borderRadius: 14,
+                      boxShadow: "0 0 28px rgba(255,90,88,0.85), inset 0 0 24px rgba(255,90,88,0.55)",
+                      pointerEvents: "none",
+                    }}
+                  >
+                    <div style={{
+                      fontSize: 140, lineHeight: 1, color: "#fff",
+                      fontWeight: 900,
+                      textShadow: "0 0 18px #ff2a28, 0 0 36px #ff5a58, 0 6px 22px rgba(0,0,0,0.9)",
+                      fontFamily: "'Cinzel', 'Trajan Pro', serif",
+                    }}>✕</div>
+                  </motion.div>
                 )}
               </motion.div>
             );
