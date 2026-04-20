@@ -190,7 +190,6 @@ export default function HeroSelect({ onSelect }) {
             {classes.map(cls => (
               <motion.div
                 key={cls.id}
-                onMouseEnter={() => getSFX().hover()}
                 onClick={() => { getSFX().buttonClick(); setSelectedClass(cls.id); setHovered(null); setChosen(null); }}
                 whileHover={{ y: -8, scale: 1.03 }}
                 style={{
@@ -241,7 +240,7 @@ export default function HeroSelect({ onSelect }) {
                 return (
                   <motion.div
                     key={hero.id}
-                    onMouseEnter={() => { getSFX().heroHover(); setHovered(hero); }}
+                    onMouseEnter={() => setHovered(hero)}
                     onMouseLeave={() => setHovered(null)}
                     onClick={() => { getSFX().buttonClick(); pick(hero); }}
                     whileHover={{ y: -8, scale: 1.03 }}

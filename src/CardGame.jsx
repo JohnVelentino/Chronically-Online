@@ -2093,7 +2093,8 @@ export default function App() {
                     animate={{ x: 0, opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.7, transition: { duration: 0.25 } }}
                     transition={{ type: "spring", stiffness: 320, damping: 28, delay: 0 }}
-                    onMouseEnter={() => setHoveredHistoryCard(card)}
+                    onMouseEnter={(e) => setHoveredHistoryCard({ ...card, _cursorX: e.clientX, _cursorY: e.clientY })}
+                    onMouseMove={(e) => setHoveredHistoryCard(prev => (prev?._hid === card._hid ? { ...prev, _cursorX: e.clientX, _cursorY: e.clientY } : prev))}
                     onMouseLeave={() => setHoveredHistoryCard(prev => (prev?._hid === card._hid ? null : prev))}
                     style={{
                       background: rcH.bg,
@@ -2181,17 +2182,28 @@ export default function App() {
       <AnimatePresence>
         {hoveredHistoryCard && (() => {
           const card = hoveredHistoryCard;
+          const PREVIEW_W = 260;
+          const PREVIEW_H = 368;
+          const GAP = 18;
+          const cx = card._cursorX ?? 200;
+          const cy = card._cursorY ?? 200;
+          // Prefer right of cursor; flip to left if near right edge.
+          const wantLeft = cx + GAP + PREVIEW_W + 8 > window.innerWidth;
+          const rawLeft = wantLeft ? cx - GAP - PREVIEW_W : cx + GAP;
+          const left = Math.max(8, Math.min(rawLeft, window.innerWidth - PREVIEW_W - 8));
+          // Vertically center on cursor, clamp to viewport.
+          const rawTop = cy - PREVIEW_H / 2;
+          const top = Math.max(8, Math.min(rawTop, window.innerHeight - PREVIEW_H - 8));
           return (
             <motion.div
               key={"history-preview-" + card._hid}
-              initial={{ opacity: 0, x: -24, scale: 0.96 }}
-              animate={{ opacity: 1, x: 0, scale: 1 }}
-              exit={{ opacity: 0, x: -18, scale: 0.96 }}
-              transition={{ duration: 0.16 }}
-              style={{ position: "fixed", left: 188, top: 74, width: 190, minHeight: 260, borderRadius: 16, padding: 10, zIndex: 850, pointerEvents: "none", boxShadow: "0 14px 32px rgba(0,0,0,0.7)" }}
+              initial={{ opacity: 0, scale: 0.94 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.94 }}
+              transition={{ duration: 0.14 }}
+              style={{ position: "fixed", left, top, width: PREVIEW_W, height: PREVIEW_H, borderRadius: 18, zIndex: 1500, pointerEvents: "none", boxShadow: "0 22px 48px rgba(0,0,0,0.8), 0 0 32px rgba(55,138,221,0.35)" }}
             >
-              <TemplateCardFace card={card} width={170} height={240} />
-              <div style={{ marginTop: 6, fontSize: 8, color: "#8aa8cc", textAlign: "center" }}>{card._summary || (card._side === "ai" ? "Enemy played this card." : "You played this card.")}</div>
+              <TemplateCardFace card={card} width={PREVIEW_W} height={PREVIEW_H} />
             </motion.div>
           );
         })()}

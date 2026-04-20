@@ -283,9 +283,16 @@ export default function TemplateCardFace({ card, width, height, onFrameError }) 
 
   const nameLen  = (card.name || "").length;
   const nameFont = clamp(
-    Math.round(width * (nameLen > 24 ? 0.050 : nameLen > 18 ? 0.060 : nameLen > 12 ? 0.074 : 0.090)),
-    isTooltip ? 16 : 9,
-    isTooltip ? 22 : 20
+    Math.round(width * (
+      nameLen > 42 ? 0.038 :
+      nameLen > 32 ? 0.046 :
+      nameLen > 24 ? 0.054 :
+      nameLen > 18 ? 0.064 :
+      nameLen > 12 ? 0.078 :
+      0.094
+    )),
+    isTooltip ? 14 : 10,
+    isTooltip ? 24 : 22
   );
   const configuredNameFont = Number(cardTemplate.nameFontSize);
   const configuredDescFont = Number(cardTemplate.descFontSize);
@@ -361,7 +368,7 @@ export default function TemplateCardFace({ card, width, height, onFrameError }) 
   // ── Full card mode ─────────────────────────────────────────────────────────
   const artH    = Math.round(height * 0.40);
   const infoH   = height - artH;
-  const descFontSize = Number.isFinite(configuredDescFont) ? configuredDescFont : (isTooltip ? 13 : 11);
+  const descFontSize = Number.isFinite(configuredDescFont) ? configuredDescFont : (isTooltip ? 14 : 12.5);
   const lineH        = Number.isFinite(Number(cardTemplate.descLineHeight)) ? Number(cardTemplate.descLineHeight) : (isTooltip ? 1.6 : 1.5);
   const descLineH = descFontSize * lineH;
   const descMinH  = Math.ceil(descLineH * 3);
@@ -448,19 +455,22 @@ export default function TemplateCardFace({ card, width, height, onFrameError }) 
 
           {/* Card Name */}
           <div style={{
-            width:         "100%",
-            textAlign:     "center",
-            fontSize:      nameFontSize,
-            fontWeight:    Number.isFinite(Number(cardTemplate.titleFontWeight)) ? Number(cardTemplate.titleFontWeight) : 700,
-            color:         "#ffffff",
-            textTransform: "uppercase",
-            letterSpacing: 1,
-            lineHeight:    1.1,
-            textShadow:    `0 0 10px ${rf.glow}, 0 2px 7px rgba(0,0,0,0.98)`,
-            whiteSpace:    "nowrap",
-            overflow:      "hidden",
-            textOverflow:  "ellipsis",
-            flexShrink:    0,
+            width:            "100%",
+            textAlign:        "center",
+            fontSize:         nameFontSize,
+            fontWeight:       Number.isFinite(Number(cardTemplate.titleFontWeight)) ? Number(cardTemplate.titleFontWeight) : 700,
+            color:            "#ffffff",
+            textTransform:    "uppercase",
+            letterSpacing:    nameLen > 24 ? 0.5 : 1,
+            lineHeight:       1.08,
+            textShadow:       `0 0 10px ${rf.glow}, 0 2px 7px rgba(0,0,0,0.98)`,
+            display:          "-webkit-box",
+            WebkitLineClamp:  2,
+            WebkitBoxOrient:  "vertical",
+            overflow:         "hidden",
+            wordBreak:        "break-word",
+            overflowWrap:     "anywhere",
+            flexShrink:       0,
           }}>
             {card.name || "???"}
           </div>
@@ -490,7 +500,7 @@ export default function TemplateCardFace({ card, width, height, onFrameError }) 
                 const mc = MECHANIC_COLORS[k.toLowerCase()] || MECHANIC_DEFAULT;
                 return (
                   <div key={k} style={{
-                    fontSize:      isTooltip ? 11 : clamp(Math.round(width * 0.036), 10, 11),
+                    fontSize:      isTooltip ? 12 : clamp(Math.round(width * 0.042), 11, 13),
                     fontFamily:    "'Cinzel','Trajan Pro',serif",
                     fontWeight:    700,
                     padding:       isTooltip ? "3px 10px" : "2px 7px",

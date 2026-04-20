@@ -49,7 +49,7 @@ export default function HeroPortrait({ name, hp, maxHp, emoji, portrait, isAI, i
         };
 
   return (
-    <div ref={heroRef} onMouseEnter={() => getSFX().hover()} onClick={onClick} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, cursor: isTarget ? "pointer" : "default" }}>
+    <div ref={heroRef} onClick={onClick} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, cursor: isTarget ? "pointer" : "default" }}>
       {!isAI && ultimateInfo && (
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, marginBottom: 1 }}>
           <div style={{ fontSize: 9, color: "#93b3d2", textTransform: "uppercase", letterSpacing: 1.2, fontWeight: 900 }}>
@@ -100,6 +100,42 @@ export default function HeroPortrait({ name, hp, maxHp, emoji, portrait, isAI, i
         )}
         <div style={{ fontSize: 30, fontWeight: 900, color: isLow ? "#E24B4A" : (isAI ? "#ff8888" : "#44ff99"), lineHeight: 1 }}>{hp}</div>
       </div>
+      {armor > 0 && (
+        <div style={{
+          position: "relative",
+          width: 56,
+          minHeight: 96,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 4,
+          padding: "10px 6px",
+          borderRadius: 14,
+          background: "linear-gradient(155deg,#4a5f7e 0%,#243449 45%,#0f1a2a 100%)",
+          border: "1.5px solid #89a8cf",
+          boxShadow:
+            "0 0 18px rgba(137,168,207,0.5), 0 6px 14px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.28), inset 0 -3px 8px rgba(0,0,0,0.5)",
+          color: "#e8f2ff",
+          userSelect: "none",
+          overflow: "hidden",
+        }}>
+          <span aria-hidden style={{
+            position: "absolute", inset: 0,
+            background: "radial-gradient(circle at 30% 20%, rgba(255,255,255,0.18) 0%, transparent 55%)",
+            pointerEvents: "none",
+          }} />
+          <span aria-hidden style={{
+            position: "absolute", top: 0, left: "-45%", width: "55%", height: "100%",
+            background: "linear-gradient(115deg, transparent 0%, rgba(255,255,255,0.25) 50%, transparent 100%)",
+            animation: "ultimateShimmer 3.8s ease-in-out infinite",
+            pointerEvents: "none",
+          }} />
+          <span style={{ position: "relative", fontSize: 22, lineHeight: 1, filter: "drop-shadow(0 0 8px rgba(170,210,255,0.75))" }}>🛡</span>
+          <span style={{ position: "relative", fontSize: 22, fontWeight: 900, lineHeight: 1, color: "#ffffff", textShadow: "0 1px 2px rgba(0,0,0,0.75), 0 0 10px rgba(170,210,255,0.4)" }}>{armor}</span>
+          <span style={{ position: "relative", fontSize: 8, fontWeight: 800, letterSpacing: 1.4, color: "#b3cbe8", textTransform: "uppercase" }}>Armor</span>
+        </div>
+      )}
       {!isAI && ultimateInfo && (
         <div style={{ position: "relative", marginLeft: 8 }}>
           {ultimateInfo.canUse && (
@@ -172,17 +208,6 @@ export default function HeroPortrait({ name, hp, maxHp, emoji, portrait, isAI, i
           letterSpacing: 0.5, whiteSpace: "nowrap",
         }}>
           {mana}/{maxMana} Aura Points
-        </div>
-      )}
-      {armor > 0 && (
-        <div style={{
-          background: "linear-gradient(135deg,#3e4f67,#24344b)",
-          border: "1px solid #6f8cad",
-          borderRadius: 8, padding: "3px 10px",
-          fontSize: 11, fontWeight: 900, color: "#cfe4ff",
-          letterSpacing: 0.4, whiteSpace: "nowrap",
-        }}>
-          🛡 Armor: {armor}
         </div>
       )}
     </div>
