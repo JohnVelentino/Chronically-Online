@@ -195,6 +195,8 @@ body {
 
 .board-zone {
   isolation: isolate;
+  /* Scope paint + layout so sibling DOM mutations don't force full-page recalc. */
+  contain: layout paint style;
 }
 
 .board-zone--enemy {
@@ -242,6 +244,7 @@ body {
   overflow: hidden;
   pointer-events: none;
   z-index: 0;
+  contain: layout paint style;
 }
 
 .board-ambient__base,

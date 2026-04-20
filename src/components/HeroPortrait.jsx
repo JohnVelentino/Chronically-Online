@@ -1,5 +1,6 @@
 // 1.7x bigger portrait (88→150px), "AP" → "Aura Points"
 import { useState, useEffect, useRef } from "react";
+import { getSFX } from "../audio/sfx.js";
 
 export default function HeroPortrait({ name, hp, maxHp, emoji, portrait, isAI, isTarget, onClick, mana, maxMana, armor = 0, ultimateInfo = null, onUltimateClick, heroRef, showName = true, size = 160 }) {
   const [flashing, setFlashing] = useState(false);
@@ -48,7 +49,7 @@ export default function HeroPortrait({ name, hp, maxHp, emoji, portrait, isAI, i
         };
 
   return (
-    <div ref={heroRef} onClick={onClick} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, cursor: isTarget ? "pointer" : "default" }}>
+    <div ref={heroRef} onMouseEnter={() => getSFX().hover()} onClick={onClick} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, cursor: isTarget ? "pointer" : "default" }}>
       {!isAI && ultimateInfo && (
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, marginBottom: 1 }}>
           <div style={{ fontSize: 9, color: "#93b3d2", textTransform: "uppercase", letterSpacing: 1.2, fontWeight: 900 }}>
@@ -113,7 +114,8 @@ export default function HeroPortrait({ name, hp, maxHp, emoji, portrait, isAI, i
             />
           )}
           <button
-            onClick={(e) => { e.stopPropagation(); onUltimateClick?.(); }}
+            onMouseEnter={() => { if (ultimateInfo.canUse) getSFX().hover(); }}
+            onClick={(e) => { e.stopPropagation(); if (ultimateInfo.canUse) getSFX().buttonClick(); onUltimateClick?.(); }}
             disabled={!ultimateInfo.canUse}
             style={{
               position: "relative", zIndex: 1,
@@ -172,7 +174,7 @@ export default function HeroPortrait({ name, hp, maxHp, emoji, portrait, isAI, i
           {mana}/{maxMana} Aura Points
         </div>
       )}
-      {!isAI && armor > 0 && (
+      {armor > 0 && (
         <div style={{
           background: "linear-gradient(135deg,#3e4f67,#24344b)",
           border: "1px solid #6f8cad",
@@ -180,7 +182,7 @@ export default function HeroPortrait({ name, hp, maxHp, emoji, portrait, isAI, i
           fontSize: 11, fontWeight: 900, color: "#cfe4ff",
           letterSpacing: 0.4, whiteSpace: "nowrap",
         }}>
-          Armor: {armor}
+          🛡 Armor: {armor}
         </div>
       )}
     </div>

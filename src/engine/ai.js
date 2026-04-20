@@ -1,5 +1,5 @@
 import { drawCard, mkUid } from "./gameState.js";
-import { applySpell, applyZuckUltimate, playBattlecry, doAttack, createMinionEntity, destroyAllMinions, damageHero, takeControlOfMinion, stealCardFromHandByUid } from "./combat.js";
+import { applySpell, applyZuckUltimate, playBattlecry, doAttack, createMinionEntity, destroyAllMinions, damageHero, takeControlOfMinion, stealCardFromHandByUid, silenceMinion } from "./combat.js";
 import { getLib } from "../data/cards.js";
 
 function getUnlockedCharges(maxMana) {
@@ -127,6 +127,96 @@ function resolveAiUltimate(gs, heroId) {
       ng = { ...ng, ai: { ...ng.ai, hand: [...ng.ai.hand, { ...beastGames, uid: mkUid() }] } };
     }
     log.push("🎯 AI triggers Squid Game Charity!", "Board wiped. 7 Contestants. Last one standing becomes the Survivor. +20 Armor both.");
+  } else if (heroId === "bibi") {
+    const enemyBoard = ng.player.board || [];
+    let takenName = null;
+    if (enemyBoard.length && ng.ai.board.length < 7) {
+      const strongest = [...enemyBoard].sort((a, b) => (b.atk + b.hp) - (a.atk + a.hp))[0];
+      if (strongest) {
+        takenName = strongest.name;
+        ng = takeControlOfMinion(ng, strongest.uid, "ai", "permanent", "ai", { keepOnKill: true });
+      }
+    }
+    const remaining = (ng.player.board || []).slice();
+    for (const m of remaining) {
+      ng = silenceMinion(ng, m.uid, "ai");
+    }
+    ng = { ...ng, player: { ...ng.player, ultimateLockedTurns: (ng.player.ultimateLockedTurns || 0) + 2 } };
+    const newMax = Math.min(10, (ng.ai.maxMana || 0) + 2);
+    ng = { ...ng, ai: { ...ng.ai, maxMana: newMax, mana: Math.min(10, (ng.ai.mana || 0) + 2) } };
+    log.push("🏛️ AI locks in COALITION LOCK!", `${takenName ? `Took ${takenName}. ` : ""}Silenced the rest. Your ult locked 2 turns. AI Max Aura +2.`);
+  } else if (heroId === "idf") {
+    const reservist = { id: "reservist_token", name: "Reservist", type: "minion", cost: 2, rarity: "common", class: "Israel", atk: 2, hp: 4, emoji: "🪖", keywords: ["taunt"], desc: "Taunt." };
+    for (let i = 0; i < 4; i += 1) {
+      if (ng.ai.board.length >= 7) break;
+      ng = { ...ng, ai: { ...ng.ai, board: [...ng.ai.board, createMinionEntity(reservist)] } };
+    }
+    if (ng.ai.board.length < 7) {
+      const merkava = { id: "merkava_ult_token", name: "Merkava Tank", type: "minion", cost: 10, rarity: "legendary", class: "Israel", atk: 10, hp: 10, emoji: "🛡️", keywords: ["rush"], desc: "Rush." };
+      ng = { ...ng, ai: { ...ng.ai, board: [...ng.ai.board, createMinionEntity(merkava)] } };
+    }
+    ng = {
+      ...ng,
+      ai: {
+        ...ng.ai,
+        board: ng.ai.board.map(m => ({
+          ...m,
+          tempAttackBonus: (m.tempAttackBonus || 0) + 1,
+          tempAttackExpiresOn: "ai",
+          hp: m.hp + 1,
+          maxHp: (m.maxHp ?? m.hp) + 1,
+          atk: (m.baseAtk ?? m.atk) + ((m.tempAttackBonus || 0) + 1) + (m.auraAttackBonus || 0),
+        })),
+      },
+    };
+    for (let i = 0; i < 2; i += 1) {
+      if (ng.ai.deck.length && ng.ai.hand.length < 10) {
+        const [top, ...rest] = ng.ai.deck;
+        ng = { ...ng, ai: { ...ng.ai, deck: rest, hand: [...ng.ai.hand, top] } };
+      }
+    }
+    log.push("🪖 AI calls TZAV 8!", "4 Reservists (Taunt) + Merkava Tank 10/10 (Rush). AI minions +1/+1 this turn. AI draws 2.");
+  } else if (heroId === "mossad") {
+    const playerDeck = ng.player.deck || [];
+    const killCount = Math.floor(playerDeck.length / 2);
+    if (killCount > 0) {
+      const deckCopy = [...playerDeck];
+      for (let i = 0; i < killCount; i += 1) {
+        const idx = Math.floor(Math.random() * deckCopy.length);
+        deckCopy.splice(idx, 1);
+      }
+      ng = { ...ng, player: { ...ng.player, deck: deckCopy } };
+    }
+    ng = destroyAllMinions(ng, "ai");
+    ng = {
+      ...ng,
+      player: { ...ng.player, board: [] },
+      visibility: {
+        ...(ng.visibility || {}),
+        playerHandRevealed: true,
+        playerHandRevealedTurns: 3,
+        playerHandRevealedUntil: null,
+      },
+    };
+    if (ng.ai.board.length < 7) {
+      const eli = createMinionEntity({
+        id: "eli_cohen_token",
+        name: "Eli Cohen",
+        type: "minion",
+        cost: 0,
+        rarity: "legendary",
+        class: "Israel",
+        atk: 4,
+        hp: 8,
+        emoji: "🎭",
+        keywords: ["eli_cohen_steal"],
+        desc: "End of turn: steal a random card from enemy hand.",
+        effectConfig: { end_of_turn: [{ type: "eli_cohen_steal" }] },
+      });
+      eli.operatorSide = "ai";
+      ng = { ...ng, ai: { ...ng.ai, board: [...ng.ai.board, eli] } };
+    }
+    log.push("📟 AI runs OPERATION GRIM BEEPER!", `Destroyed ${killCount} of your deck. Wiped your board. Hand revealed 3 turns. Eli Cohen planted.`);
   }
   ng = {
     ...ng,

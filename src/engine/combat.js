@@ -56,6 +56,30 @@ function applyHeroDamageWithArmor(hero, amount) {
   return { ...hero, armor: armor - blocked, hp: hero.hp - overflow };
 }
 
+function consumeHeroDamage(gs, heroSide, amount) {
+  if (amount <= 0) return { gs, amount: 0 };
+  const shield = gs[heroSide].heroShieldTurns || 0;
+  if (shield > 0) {
+    return { gs, amount: 0 };
+  }
+  const ironDomer = (gs[heroSide].board || []).find(
+    m => m.keywords?.includes("iron_dome") && m.ironDomeReady !== false
+  );
+  if (ironDomer) {
+    const next = {
+      ...gs,
+      [heroSide]: {
+        ...gs[heroSide],
+        board: gs[heroSide].board.map(m =>
+          m.uid === ironDomer.uid ? { ...m, ironDomeReady: false } : m
+        ),
+      },
+    };
+    return { gs: next, amount: 0 };
+  }
+  return { gs, amount };
+}
+
 function withReveals(gs, patch) {
   return { ...gs, visibility: { ...(gs.visibility || {}), ...patch } };
 }
@@ -378,9 +402,9 @@ function returnTemporaryControl(gs, side) {
 export function dealDamage(gs, targetId, amount, sourceSide = "player") {
   let next = gs;
   if (targetId === "hero_player") {
-    next = { ...next, player: applyHeroDamageWithArmor(next.player, amount) };
+    next = damageHero(next, "player", amount);
   } else if (targetId === "hero_ai") {
-    next = { ...next, ai: applyHeroDamageWithArmor(next.ai, amount) };
+    next = damageHero(next, "ai", amount);
   } else {
     ["player", "ai"].forEach(side => {
       if (next[side].board.some(m => m.uid === targetId)) {
@@ -399,11 +423,11 @@ export function dealDamageToAll(gs, targetGroup, amount, sourceSide = "player") 
       next = { ...next, [side]: { ...next[side], board: next[side].board.map(m => ({ ...m, hp: m.hp - amount })) } };
     });
   } else if (targetGroup === "all_enemies") {
+    next = damageHero(next, enemySide, amount);
     next = {
       ...next,
       [enemySide]: {
         ...next[enemySide],
-        ...applyHeroDamageWithArmor(next[enemySide], amount),
         board: next[enemySide].board.map(m => ({ ...m, hp: m.hp - amount })),
       },
     };
@@ -572,9 +596,12 @@ export function applyZuckUltimate(gs, casterSide) {
 }
 
 export function damageHero(gs, heroSide, amount) {
+  if (amount <= 0) return gs;
+  const res = consumeHeroDamage(gs, heroSide, amount);
+  if (res.amount <= 0) return res.gs;
   return {
-    ...gs,
-    [heroSide]: applyHeroDamageWithArmor(gs[heroSide], amount),
+    ...res.gs,
+    [heroSide]: applyHeroDamageWithArmor(res.gs[heroSide], res.amount),
   };
 }
 
@@ -705,6 +732,12 @@ function runTriggerAction(gs, action, ownerSide, sourceSide, selfUid, log = []) 
       }
       return gs;
     }
+    case "eli_cohen_steal": {
+      const selfMinion = (gs[ownerSide]?.board || []).find(m => m.uid === selfUid);
+      const operator = selfMinion?.operatorSide || ownerSide;
+      const victim = getEnemySide(operator);
+      return stealRandomCardFromHand(gs, victim, operator);
+    }
     default:
       return gs;
   }
@@ -730,6 +763,7 @@ export function startTurn(gs, side) {
     [side]: {
       ...gs[side],
       board: gs[side].board.map(m => {
+        const ironDomeRefresh = m.keywords?.includes("iron_dome") ? { ironDomeReady: true } : {};
         if (m.frozenNextTurn) {
           return {
             ...normalizeMinionStats(m),
@@ -738,6 +772,7 @@ export function startTurn(gs, side) {
             attacksRemaining: 0,
             rushOnlyThisTurn: false,
             frozenNextTurn: false,
+            ...ironDomeRefresh,
           };
         }
         return {
@@ -746,6 +781,7 @@ export function startTurn(gs, side) {
           canAttack: true,
           attacksRemaining: m.attacksRemaining && m.attacksRemaining > 1 ? m.attacksRemaining : 1,
           rushOnlyThisTurn: false,
+          ...ironDomeRefresh,
         };
       }),
     },
@@ -802,8 +838,31 @@ export function resolveEndOfTurn(gs, side) {
       cleared[key] = false;
       cleared[`${key}Until`] = null;
     }
+    const turnsKey = `${key}Turns`;
+    if ((visibility[turnsKey] || 0) > 0) {
+      const remaining = visibility[turnsKey] - 1;
+      if (remaining <= 0) {
+        cleared[key] = false;
+        cleared[turnsKey] = 0;
+        cleared[`${key}Until`] = null;
+      } else {
+        cleared[turnsKey] = remaining;
+      }
+    }
   });
   next = { ...next, visibility: cleared };
+
+  // Decrement enemy hero shield (Iron Dome spell) so shield persists one full enemy turn.
+  const enemySide = getEnemySide(side);
+  if ((next[enemySide].heroShieldTurns || 0) > 0) {
+    next = {
+      ...next,
+      [enemySide]: {
+        ...next[enemySide],
+        heroShieldTurns: Math.max(0, (next[enemySide].heroShieldTurns || 0) - 1),
+      },
+    };
+  }
 
   next = resolveDeaths(next, side, log);
   return { gs: recalculateAuras(next), log };
@@ -1132,6 +1191,149 @@ export function applySpell(effect, targetId, gs, side, sourceCard = null) {
       gs = triggerBeastGamesRestart(gs);
       log.push("BEAST GAMES ACTIVATED. Match restarted.");
     }
+  } else if (effect === "judicial_reform") {
+    if (targetId) gs = silenceMinion(gs, targetId, side);
+    gs = drawCards(gs, side, 1);
+    log.push("Judicial Reform: silenced + drew 1.");
+  } else if (effect === "knesset_speech") {
+    if (targetId) {
+      gs = buffMinion(gs, targetId, 2, 2, "permanent", side);
+      ["player", "ai"].forEach(s => {
+        if (gs[s].board.find(m => m.uid === targetId)) {
+          gs = updateMinion(gs, s, targetId, m => {
+            const kw = Array.isArray(m.keywords) ? [...m.keywords] : [];
+            if (!kw.includes("elusive")) kw.push("elusive");
+            return normalizeMinionStats({ ...m, keywords: kw });
+          });
+        }
+      });
+    }
+    log.push("Knesset yap sesh: +2/+2 + Elusive.");
+  } else if (effect === "bibi_indictment") {
+    if (targetId) {
+      const tgt = gs[enemy].board.find(m => m.uid === targetId);
+      if (tgt && (tgt.atk ?? 0) <= 3) {
+        gs = destroyMinion(gs, targetId, side);
+        log.push("Indictment: destroyed.");
+      } else {
+        log.push("Target Attack too high.");
+      }
+    }
+  } else if (effect === "iron_dome_shield") {
+    gs = {
+      ...gs,
+      [side]: {
+        ...gs[side],
+        armor: (gs[side].armor || 0) + 5,
+        heroShieldTurns: Math.max(gs[side].heroShieldTurns || 0, 1),
+      },
+    };
+    log.push("Iron Dome up! Hero shielded + 5 Armor.");
+  } else if (effect === "mandatory_service_spell") {
+    const before = gs[side].board.length;
+    const boost = gs[side].board.length >= 3;
+    const conscript = {
+      id: "conscript_token",
+      name: "Conscript",
+      cost: 1,
+      atk: 1,
+      hp: 2,
+      type: "minion",
+      rarity: "common",
+      keywords: [],
+      class: "Israel",
+      token: true,
+    };
+    gs = summonToken(gs, side, conscript, 3);
+    if (boost) {
+      const summoned = gs[side].board.slice(before);
+      for (const m of summoned) {
+        gs = buffMinion(gs, m.uid, 1, 1, "permanent", side);
+      }
+      log.push("3 Conscripts +1/+1 (you had 3+ minions).");
+    } else {
+      log.push("3 Conscripts drafted.");
+    }
+  } else if (effect === "f35_strike") {
+    const dmgAmount = 6;
+    if (targetId) {
+      const tgt = gs[enemy].board.find(m => m.uid === targetId);
+      if (tgt) {
+        const overflow = Math.max(0, dmgAmount - tgt.hp);
+        gs = dealDamage(gs, targetId, dmgAmount, side);
+        if (overflow > 0) {
+          gs = damageHero(gs, enemy, overflow);
+          log.push(`F-35 Strike: ${dmgAmount} to minion, ${overflow} overflow to hero.`);
+        } else {
+          log.push(`F-35 Strike: ${dmgAmount} damage.`);
+        }
+      }
+    }
+  } else if (effect === "exploding_pager") {
+    let hits = 0;
+    const hitUids = new Set();
+    while (hits < 3) {
+      const pool = gs[enemy].board.filter(m => !hitUids.has(m.uid));
+      if (!pool.length) break;
+      const pick = pickRandom(pool);
+      const prevBoardLen = gs[enemy].board.length;
+      hitUids.add(pick.uid);
+      gs = dealDamage(gs, pick.uid, 3, side);
+      hits += 1;
+      const nowLen = gs[enemy].board.length;
+      if (nowLen >= prevBoardLen) break;
+    }
+    log.push(`Pager chain: ${hits} hit(s).`);
+  } else if (effect === "honey_trap") {
+    if (targetId) {
+      gs = takeControlOfMinion(gs, targetId, side, "turn", side, { keepOnKill: false });
+      const controlled = gs[side].board.find(m => m.uid === targetId);
+      if (controlled) {
+        gs = updateMinion(gs, side, targetId, m => ({
+          ...m,
+          summoningSick: false,
+          canAttack: true,
+          attacksRemaining: Math.max(m.attacksRemaining || 0, 1),
+        }));
+        const atk = controlled.atk || 0;
+        gs = damageHero(gs, enemy, atk);
+        log.push(`Honey trap: they hit their own hero for ${atk}.`);
+      }
+    }
+  } else if (effect === "false_flag_op") {
+    const eh = gs[enemy].hand;
+    let remaining = eh;
+    for (let i = 0; i < 2; i += 1) {
+      if (!remaining.length) break;
+      const d = pickRandom(remaining);
+      remaining = remaining.filter(c => c.uid !== d.uid);
+    }
+    gs = { ...gs, [enemy]: { ...gs[enemy], hand: remaining } };
+    gs = drawCards(gs, side, 1);
+    log.push("False flag: enemy dumped 2. You drew 1.");
+  } else if (effect === "eli_cohen_arc") {
+    if (gs[enemy].board.length < 7) {
+      const eli = createMinionEntity({
+        id: "eli_cohen_token",
+        name: "Eli Cohen",
+        cost: 0,
+        atk: 4,
+        hp: 8,
+        type: "minion",
+        rarity: "legendary",
+        keywords: ["eli_cohen_steal", "cant_attack"],
+        class: "Israel",
+        token: true,
+        desc: "Can't Attack. End of turn: operator steals a card from this side's hand.",
+        effectConfig: { end_of_turn: [{ type: "eli_cohen_steal" }] },
+      });
+      eli.operatorSide = side;
+      gs = { ...gs, [enemy]: { ...gs[enemy], board: [...gs[enemy].board, eli] } };
+      gs = recalculateAuras(gs);
+      log.push("Eli Cohen planted on enemy board. Asset active.");
+    } else {
+      log.push("Enemy board full — Eli couldn't get in.");
+    }
   }
 
   gs = resolveOnEnemySpellCast(gs, side, log);
@@ -1274,6 +1476,59 @@ export function playBattlecry(card, gs, side) {
     if (tid) gs = dealDamage(gs, tid, 2, side);
     log.push("2 damage.");
   }
+  if (kw.includes("likud_discount_aura")) {
+    const p = gs[side];
+    gs = {
+      ...gs,
+      [side]: {
+        ...p,
+        hand: p.hand.map(c => (c.type === "minion" && c.uid !== card.uid ? { ...c, cost: Math.max(0, (c.cost || 0) - 1) } : c)),
+      },
+    };
+    log.push("Likud Majority: your minions cost (1) less.");
+  }
+  if (kw.includes("sara_copy_discount")) {
+    const beforeHand = gs[side].hand;
+    gs = copyRandomCardFromHand(gs, enemy, side);
+    const afterHand = gs[side].hand;
+    if (afterHand.length > beforeHand.length) {
+      const added = afterHand[afterHand.length - 1];
+      gs = {
+        ...gs,
+        [side]: {
+          ...gs[side],
+          hand: gs[side].hand.map(c => c.uid === added.uid ? { ...c, cost: Math.max(0, (c.cost || 0) - 2) } : c),
+        },
+      };
+    }
+    log.push("Sara copied an enemy card (-2 cost).");
+  }
+  if (kw.includes("golani_summon_soldier")) {
+    const soldier = { id: "soldier_token", name: "Soldier", cost: 1, atk: 1, hp: 2, type: "minion", rarity: "common", keywords: ["rush"], class: "Israel", token: true };
+    gs = summonToken(gs, side, soldier, 1);
+    log.push("1/2 Soldier deployed with Rush.");
+  }
+  if (kw.includes("unit_8200_reveal")) {
+    gs = revealHand(gs, enemy, "turn");
+    gs = drawCards(gs, side, 1);
+    log.push("Unit 8200: enemy hand revealed. Drew 1.");
+  }
+  if (kw.includes("sayanim_peek_destroy")) {
+    const deck = gs[enemy].deck;
+    if (deck.length > 0) {
+      const topCount = Math.min(3, deck.length);
+      const top = deck.slice(0, topCount);
+      const preview = top.map(c => c.id);
+      gs = { ...gs, visibility: { ...(gs.visibility || {}), enemyDeckPeek: preview } };
+      const kill = pickRandom(top);
+      if (kill) {
+        gs = { ...gs, [enemy]: { ...gs[enemy], deck: deck.filter(c => c.uid !== kill.uid) } };
+        log.push(`Sayanim peeked ${topCount}, destroyed ${kill.name}.`);
+      }
+    } else {
+      log.push("Enemy deck empty — nothing to peek.");
+    }
+  }
 
   const triggerActions = getTriggerActions(card, "battlecry");
   for (const action of triggerActions) {
@@ -1289,6 +1544,7 @@ export function doAttack(atkUid, atkSide, targetId, gs) {
   const defSide = atkSide === "player" ? "ai" : "player";
   const att = gs[atkSide].board.find(m => m.uid === atkUid);
   if (!att || att.atk === 0) return { gs, log: ["Can't attack!"] };
+  if (att.keywords?.includes("cant_attack")) return { gs, log: ["This minion can't attack."] };
   if (att.summoningSick && !att.keywords?.includes("charge") && !att.keywords?.includes("rush")) return { gs, log: ["Summoning sickness!"] };
   if (att.canAttack === false || (att.attacksRemaining ?? 0) <= 0) return { gs, log: ["Already attacked!"] };
 

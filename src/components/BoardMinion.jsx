@@ -19,7 +19,7 @@ const KEYWORD_ICONS = {
   aura_other_friendly_attack_1: "✨",
 };
 
-export default function BoardMinion({
+function BoardMinionImpl({
   minion,
   onClick,
   isSelected,
@@ -319,3 +319,5 @@ export default function BoardMinion({
     </>
   );
 }
+
+export default BoardMinionImpl;

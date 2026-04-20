@@ -119,6 +119,54 @@ export const HEROES = [
       "mrbeast_check","ten_k_giveaway","subscribe_spell","npc","ratio","touch_grass","streamer","influencer",
     ],
   },
+  {
+    id: "bibi",
+    name: "Benjamin Netanyahu",
+    class: "Israel",
+    emoji: "🇮🇱",
+    portrait: ASSET("assets/heroes/Benjamin.png"),
+    cardBack: null,
+    bio: "Coalition locked in fr. Indictments? Couldn't be me bestie.",
+    themeColor: "#3ba8ff",
+    glowColor: "rgba(180,220,255,0.75)",
+    deckIds: [
+      "likud_majority","likud_majority","judicial_reform","judicial_reform","knesset_speech","knesset_speech",
+      "bibi_indictment","bibi_indictment","settlement_expansion","settlement_expansion","sara_netanyahu",
+      "ratio","lowkey","npc","npc","karen","touch_grass","cancel","vibe_check","sigma",
+    ],
+  },
+  {
+    id: "idf",
+    name: "IDF",
+    class: "Israel",
+    emoji: "🪖",
+    portrait: ASSET("assets/heroes/IDF.png"),
+    cardBack: null,
+    bio: "Drafted at 18 fr. Tank go brrr, no cap.",
+    themeColor: "#4fb6ff",
+    glowColor: "rgba(200,230,255,0.8)",
+    deckIds: [
+      "merkava_mk4","merkava_mk4","iron_dome_spell","iron_dome_spell","golani_brigade","golani_brigade",
+      "mandatory_service_card","mandatory_service_card","f35_strike","f35_strike","unit_8200","unit_8200",
+      "gym_rat","crypto_bro","crypto_bro","npc","npc","touch_grass","karen","ratio",
+    ],
+  },
+  {
+    id: "mossad",
+    name: "The Mossad",
+    class: "Israel",
+    emoji: "🕵️‍♂️",
+    portrait: ASSET("assets/heroes/Mossad.png"),
+    cardBack: null,
+    bio: "Sliding into your deck unseen. Pager on silent, receipts in pocket.",
+    themeColor: "#6fc3ff",
+    glowColor: "rgba(230,244,255,0.85)",
+    deckIds: [
+      "sayanim_agent","sayanim_agent","exploding_pager","exploding_pager","honey_trap","honey_trap",
+      "kidon_unit","kidon_unit","false_flag_op","false_flag_op","eli_cohen_arc",
+      "influencer","npc","npc","ratio","cancel","lowkey","nft","touch_grass","streamer",
+    ],
+  },
 ];
 
 export const DECK_SIZE_TARGET = 35;
@@ -226,6 +274,37 @@ export const CLASS_CARDS = [
   { id:"cigar_night",        name:"Cigar Night",               cost:10,             type:"spell",  desc:"Your hero takes 10 damage. Give all friendly minions +8/+8. Draw a card.",            emoji:"🚬", rarity:"legendary", effect:"cigar_night",            targetType:"none",   flavor:"the smoke clears… only alphas remain.",                  class:"Viral", token:true },
   { id:"bugatti_chiron",     name:"Bugatti Chiron Pur Sport",  cost:8, atk:8, hp:10,type:"minion", desc:"Charge. Battlecry: All your minions have Charge this turn.",                         emoji:"🏎️", rarity:"legendary", keywords:["charge","battlecry","grant_charge_all_turn"],                              flavor:"what color is your bugatti?...",                          class:"Viral", token:true },
   { id:"security_team_spell",name:"A-Level Celebrity Security",cost:6,              type:"spell",  desc:"Gain 10 Armor. Summon four 4/8 Security Team with Taunt. (Cannot attack enemy hero.)", emoji:"🕶️", rarity:"legendary", effect:"celebrity_security",     targetType:"none",   flavor:"sir, the red carpet. and the body bag. both rolled out.", class:"Viral", token:true },
+
+  // ── BiBi / Israel class ──────────────────────────────────────────────────────
+  { id:"likud_majority",        name:"Likud Majority",         cost:5, atk:4, hp:6, type:"minion", desc:"Taunt. Your other friendlies cost (1) less.",                                        emoji:"🏛️", rarity:"legendary", keywords:["taunt","likud_discount_aura"],                                             flavor:"coalition locked in fr. no cap.",                         class:"Israel" },
+  { id:"judicial_reform",       name:"Judicial Reform",        cost:3,              type:"spell",  desc:"Silence an enemy minion. Draw a card.",                                              emoji:"⚖️", rarity:"rare",     effect:"judicial_reform",        targetType:"minion", flavor:"supreme court? couldn't be me bestie.",                   class:"Israel" },
+  { id:"knesset_speech",        name:"Knesset Yap Sesh",       cost:2,              type:"spell",  desc:"Give a friendly minion +2/+2 and Elusive.",                                           emoji:"🎙️", rarity:"common",   effect:"knesset_speech",         targetType:"minion_friendly", flavor:"4 hours of yap. nobody's changing their vote tho.",       class:"Israel" },
+  { id:"bibi_indictment",       name:"Indictment (Pending)",   cost:1,              type:"spell",  desc:"Destroy an enemy minion with 3 or less Attack. Trial's delayed anyway.",              emoji:"📜", rarity:"common",   effect:"bibi_indictment",        targetType:"minion", flavor:"trial scheduled for 2087. cooked? couldn't be me.",       class:"Israel" },
+  { id:"settlement_expansion",  name:"Settlement Expansion",   cost:4, atk:3, hp:3, type:"minion", desc:"At end of your turn, gain +1/+1.",                                                   emoji:"🏘️", rarity:"rare",     keywords:[],                                                                          flavor:"one brick at a time bestie. keep building.",             class:"Israel", effectConfig: { end_of_turn: { type: "buff_minion", attackDelta: 1, healthDelta: 1, duration: "permanent" } } },
+  { id:"sara_netanyahu",        name:"Sara Netanyahu",         cost:3, atk:2, hp:5, type:"minion", desc:"Battlecry: Copy a random enemy card. It costs (2) less.",                             emoji:"👑", rarity:"legendary", keywords:["battlecry","sara_copy_discount"],                                          flavor:"wife aura maxed. the brain behind the brand.",           class:"Israel" },
+
+  // ── IDF / Israel class ──────────────────────────────────────────────────────
+  { id:"merkava_mk4",           name:"Merkava Mk.4",           cost:5, atk:4, hp:7, type:"minion", desc:"Taunt. Iron Dome: blocks one hero damage each turn while alive.",                     emoji:"🛡️", rarity:"epic",     keywords:["taunt","iron_dome"],                                                       flavor:"main battle tank. diesel energy on god.",                class:"Israel" },
+  { id:"iron_dome_spell",       name:"Iron Dome",              cost:2,              type:"spell",  desc:"Your hero takes no damage next turn. Gain 5 Armor.",                                  emoji:"🚀", rarity:"rare",     effect:"iron_dome_shield",       targetType:"none",   flavor:"sky swipe ult. rockets? not today bestie.",               class:"Israel" },
+  { id:"golani_brigade",        name:"Golani Brigade",         cost:3, atk:3, hp:3, type:"minion", desc:"Battlecry: Summon a 1/2 Soldier with Rush.",                                          emoji:"🎖️", rarity:"rare",     keywords:["battlecry","golani_summon_soldier"],                                       flavor:"infantry main character energy.",                        class:"Israel" },
+  { id:"mandatory_service_card",name:"Mandatory Service",      cost:4,              type:"spell",  desc:"Summon three 1/2 Conscripts. If you control 3+ other minions, they get +1/+1.",       emoji:"📋", rarity:"rare",     effect:"mandatory_service_spell",targetType:"none",   flavor:"18 and drafted. unserious until the whatsapp hits.",      class:"Israel" },
+  { id:"f35_strike",            name:"F-35 Precision Strike",  cost:5,              type:"spell",  desc:"Deal 6 damage to a minion. Any excess hits the enemy hero.",                           emoji:"✈️", rarity:"epic",     effect:"f35_strike",             targetType:"minion", flavor:"stealth mode. overflow? the hero's problem now.",          class:"Israel" },
+  { id:"unit_8200",             name:"Unit 8200 Hacker",       cost:3, atk:2, hp:4, type:"minion", desc:"Battlecry: Reveal enemy hand this turn. Draw a card.",             emoji:"💻", rarity:"epic",     keywords:["battlecry","unit_8200_reveal"],                                            flavor:"reads your dms AND your deck. mogged.",                   class:"Israel" },
+
+  // ── Mossad / Israel class ──────────────────────────────────────────────────
+  { id:"sayanim_agent",         name:"Sayanim Agent",          cost:2, atk:2, hp:3, type:"minion", desc:"Elusive. Battlecry: Peek top 3 of enemy deck and destroy 1.",                         emoji:"🕶️", rarity:"rare",     keywords:["elusive","battlecry","sayanim_peek_destroy"],                              flavor:"lowkey operative. slid into the deck like it was open dms.", class:"Israel" },
+  { id:"exploding_pager",       name:"Exploding Pager",        cost:1,              type:"spell",  desc:"Deal 3 damage to a random enemy minion. If it dies, chain to another (up to 3).",     emoji:"📟", rarity:"common",   effect:"exploding_pager",        targetType:"none",   flavor:"pager go brrr. beeper gang in shambles.",                 class:"Israel" },
+  { id:"honey_trap",            name:"Honey Trap",             cost:3,              type:"spell",  desc:"Take control of an enemy minion until end of turn. It attacks the enemy hero.",        emoji:"🍯", rarity:"epic",     effect:"honey_trap",             targetType:"minion", flavor:"rizz weaponized. classified rizz tho.",                   class:"Israel" },
+  { id:"kidon_unit",            name:"Kidon Unit",             cost:4, atk:5, hp:3, type:"minion", desc:"Rush. Elusive.",                                                                      emoji:"🗡️", rarity:"epic",     keywords:["rush","elusive"],                                                          flavor:"tip of the spear. blink and you're mogged.",              class:"Israel" },
+  { id:"false_flag_op",         name:"False Flag Op",          cost:2,              type:"spell",  desc:"Enemy discards 2 random cards. You draw 1.",                                         emoji:"🏴", rarity:"rare",     effect:"false_flag_op",          targetType:"none",   flavor:"wasn't us bestie. receipts? destroyed.",                  class:"Israel" },
+  { id:"eli_cohen_arc",         name:"Eli Cohen Arc",          cost:9,              type:"spell",  desc:"Summon a 4/8 Eli Cohen on the ENEMY board. Can't Attack. End of their turn: steal a random card from enemy hand for you.", emoji:"🎭", rarity:"legendary", effect:"eli_cohen_arc",          targetType:"none",   flavor:"undercover arc locked in. their board, your asset.",      class:"Israel" },
+
+  // ── Israel tokens ───────────────────────────────────────────────────────────
+  { id:"reservist_token",       name:"Reservist",              cost:2, atk:2, hp:4, type:"minion", desc:"Taunt. Called up on the WhatsApp fr.",                                                emoji:"🪖", rarity:"common",   keywords:["taunt"],                                                                   flavor:"suddenly in uniform. unserious → locked in.",              class:"Israel", token:true },
+  { id:"merkava_ult_token",     name:"Merkava Tank",           cost:10, atk:10, hp:10, type:"minion", desc:"Rush.",                                                                              emoji:"🛡️", rarity:"legendary", keywords:["rush"],                                                                    flavor:"10/10 no notes. rolling in hot.",                         class:"Israel", token:true },
+  { id:"soldier_token",         name:"Soldier",                cost:1, atk:1, hp:2, type:"minion", desc:"Rush.",                                                                              emoji:"🎖️", rarity:"common",   keywords:["rush"],                                                                    flavor:"basic trainee. locked in regardless.",                    class:"Israel", token:true },
+  { id:"conscript_token",       name:"Conscript",              cost:1, atk:1, hp:2, type:"minion", desc:"Drafted fr.",                                                                         emoji:"🪖", rarity:"common",   keywords:[],                                                                          flavor:"18 and drafted. unserious.",                              class:"Israel", token:true },
+  { id:"eli_cohen_token",       name:"Eli Cohen",              cost:0, atk:4, hp:8, type:"minion", desc:"End of turn: steal a random card from the opposing hand for your original operator.", emoji:"🎭", rarity:"legendary", keywords:["eli_cohen_steal","cant_attack"],                                           flavor:"our man in damascus. pager on silent.",                   class:"Israel", token:true },
 ];
 
 // ── CARD DATA ────────────────────────────────────────────────────────────────
@@ -473,6 +552,86 @@ export function setHeroPortraitOverride(heroId, dataUrl) {
 export function resetHeroPortraitOverride(heroId) {
   if (!heroId) return;
   try { localStorage.removeItem(`heroPortrait:${heroId}`); } catch {}
+}
+
+// ── Export / Import: portable bundle of every localStorage-saved tweak ───────
+// Schema: { version, exportedAt, customCards, overrides, deletedIds, heroDecks, heroPortraits }
+// Use this to back up, ship edits to teammates, or commit to source.
+export const EXPORT_VERSION = 1;
+
+export function exportCustomizations() {
+  const heroDecks = {};
+  const heroPortraits = {};
+  for (const hero of HEROES) {
+    try {
+      const deckRaw = localStorage.getItem(`${LS_HERO_DECK_PREFIX}${hero.id}`);
+      if (deckRaw) heroDecks[hero.id] = JSON.parse(deckRaw);
+    } catch {}
+    try {
+      const p = localStorage.getItem(`heroPortrait:${hero.id}`);
+      if (p) heroPortraits[hero.id] = p;
+    } catch {}
+  }
+  return {
+    version: EXPORT_VERSION,
+    exportedAt: new Date().toISOString(),
+    customCards: CUSTOM_CARDS,
+    overrides: LIBRARY_CARD_OVERRIDES,
+    deletedIds: [...LIBRARY_DELETED_IDS],
+    heroDecks,
+    heroPortraits,
+  };
+}
+
+// Replace current state with the imported bundle. Returns { ok, error }.
+export function importCustomizations(bundle, { merge = false } = {}) {
+  if (!bundle || typeof bundle !== "object") return { ok: false, error: "Invalid bundle: not an object." };
+  if (bundle.version !== EXPORT_VERSION) return { ok: false, error: `Unsupported version: ${bundle.version}` };
+  try {
+    if (Array.isArray(bundle.customCards)) {
+      CUSTOM_CARDS = merge
+        ? [...CUSTOM_CARDS, ...bundle.customCards.filter(c => !CUSTOM_CARDS.find(e => e.id === c.id))]
+        : bundle.customCards;
+    }
+    if (bundle.overrides && typeof bundle.overrides === "object") {
+      LIBRARY_CARD_OVERRIDES = merge ? { ...LIBRARY_CARD_OVERRIDES, ...bundle.overrides } : bundle.overrides;
+    }
+    if (Array.isArray(bundle.deletedIds)) {
+      LIBRARY_DELETED_IDS = merge
+        ? new Set([...LIBRARY_DELETED_IDS, ...bundle.deletedIds])
+        : new Set(bundle.deletedIds);
+    }
+    persistAll();
+
+    if (bundle.heroDecks && typeof bundle.heroDecks === "object") {
+      for (const [hid, ids] of Object.entries(bundle.heroDecks)) {
+        if (Array.isArray(ids)) {
+          try { localStorage.setItem(`${LS_HERO_DECK_PREFIX}${hid}`, JSON.stringify(ids)); } catch {}
+        }
+      }
+    }
+    if (bundle.heroPortraits && typeof bundle.heroPortraits === "object") {
+      for (const [hid, url] of Object.entries(bundle.heroPortraits)) {
+        if (typeof url === "string" && url) {
+          try { localStorage.setItem(`heroPortrait:${hid}`, url); } catch {}
+        }
+      }
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+}
+
+export function clearAllCustomizations() {
+  CUSTOM_CARDS = [];
+  LIBRARY_CARD_OVERRIDES = {};
+  LIBRARY_DELETED_IDS = new Set();
+  persistAll();
+  for (const hero of HEROES) {
+    try { localStorage.removeItem(`${LS_HERO_DECK_PREFIX}${hero.id}`); } catch {}
+    try { localStorage.removeItem(`heroPortrait:${hero.id}`); } catch {}
+  }
 }
 
 export let CUSTOM_CARDS = [];

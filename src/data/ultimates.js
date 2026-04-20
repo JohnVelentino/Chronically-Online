@@ -56,5 +56,29 @@ export function getUltimateMeta(hero) {
     themeColor: "#2ecc71",
     desc: "Destroy all minions. Summon 7 Contestants (4 yours / 3 enemy). One Survivor gains +10/+10 and Charge. Both heroes +20 Armor. You gain 5 Aura this turn. Add Beast Games to hand.",
   };
+  if (heroId === "bibi") return {
+    id: "bibi",
+    name: "Coalition Lock",
+    cost: 0,
+    emoji: "🏛️",
+    themeColor: "#0038b8",
+    desc: "Take permanent control of the strongest enemy minion. Silence all other enemy minions. Lock enemy Ultimate for 2 turns. Gain +2 Max Aura this match.",
+  };
+  if (heroId === "idf") return {
+    id: "idf",
+    name: "Tzav 8 — Emergency Call-Up",
+    cost: 0,
+    emoji: "🪖",
+    themeColor: "#2a6cc9",
+    desc: "Summon four 2/4 Reservists with Taunt and one 10/10 Merkava Tank with Rush. Give all friendly minions +1/+1 this turn. Draw 2 cards.",
+  };
+  if (heroId === "mossad") return {
+    id: "mossad",
+    name: "Operation Grim Beeper",
+    cost: 0,
+    emoji: "📟",
+    themeColor: "#0a1b3d",
+    desc: "Destroy half of enemy deck (random). Destroy all enemy minions. Reveal enemy hand for 3 turns. Summon a 4/8 Eli Cohen that steals an enemy card at end of your turn.",
+  };
   return { id: "generic", name: "Ultimate", cost: 0, emoji: "⚡", themeColor: "#ffcc33", desc: "A powerful hero-specific ability." };
 }

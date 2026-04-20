@@ -62,8 +62,50 @@ function toneSound(freq, duration=0.2, volume=0.3) {
   playSound(src, volume);
 }
 
+// Throttle hover sounds so a fast mouse doesn't machine-gun tones.
+let lastHoverAt = 0;
+function hoverThrottle(minGapMs = 55) {
+  const now = performance.now();
+  if (now - lastHoverAt < minGapMs) return false;
+  lastHoverAt = now;
+  return true;
+}
+
 function createSoundEngine() {
   return {
+    hover() {
+      if (!hoverThrottle()) return;
+      toneSound(1400, 0.028, 0.05);
+      toneSound(2100, 0.022, 0.035);
+    },
+    heroHover() {
+      if (!hoverThrottle(90)) return;
+      toneSound(520, 0.05, 0.08);
+      toneSound(780, 0.04, 0.06);
+    },
+    buttonClick() {
+      toneSound(820, 0.04, 0.12);
+      toneSound(1200, 0.05, 0.08);
+      noiseSound(0.04);
+    },
+    softClick() {
+      toneSound(680, 0.03, 0.08);
+    },
+    summon() {
+      // Low rumble + rising chord = minion arrives on board.
+      toneSound(90, 0.18, 0.28);
+      toneSound(140, 0.14, 0.2);
+      noiseSound(0.12);
+      setTimeout(() => {
+        toneSound(330, 0.1, 0.16);
+        toneSound(495, 0.12, 0.14);
+        toneSound(660, 0.14, 0.12);
+      }, 60);
+      setTimeout(() => {
+        toneSound(880, 0.08, 0.1);
+        toneSound(1320, 0.06, 0.08);
+      }, 160);
+    },
     cardSelect() {
       toneSound(440, 0.08, 0.15);
       toneSound(660, 0.08, 0.12);

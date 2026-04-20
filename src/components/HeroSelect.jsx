@@ -2,6 +2,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { HEROES, CLASS_CARDS, DEFAULT_CARDS, RC, getHeroDeckIds } from "../data/cards.js";
 import { getUltimateMeta } from "../data/ultimates.js";
+import { getSFX } from "../audio/sfx.js";
 
 // Small card preview used only inside HeroSelect
 function MiniCard({ card }) {
@@ -134,6 +135,13 @@ export default function HeroSelect({ onSelect }) {
       themeColor: "#d4af37",
       glowColor: "rgba(212,175,55,0.4)",
     },
+    {
+      id: "israel",
+      label: "Israel",
+      subtitle: "Coalition yap, Iron Dome energy, and classified rizz ops.",
+      themeColor: "#3ba8ff",
+      glowColor: "rgba(180,220,255,0.5)",
+    },
   ];
 
   const heroClassKey = (hero) => hero.class.toLowerCase().startsWith("usa") ? "usa" : hero.class.toLowerCase();
@@ -182,7 +190,8 @@ export default function HeroSelect({ onSelect }) {
             {classes.map(cls => (
               <motion.div
                 key={cls.id}
-                onClick={() => { setSelectedClass(cls.id); setHovered(null); setChosen(null); }}
+                onMouseEnter={() => getSFX().hover()}
+                onClick={() => { getSFX().buttonClick(); setSelectedClass(cls.id); setHovered(null); setChosen(null); }}
                 whileHover={{ y: -8, scale: 1.03 }}
                 style={{
                   width: 260, cursor: "pointer",
@@ -232,9 +241,9 @@ export default function HeroSelect({ onSelect }) {
                 return (
                   <motion.div
                     key={hero.id}
-                    onMouseEnter={() => setHovered(hero)}
+                    onMouseEnter={() => { getSFX().heroHover(); setHovered(hero); }}
                     onMouseLeave={() => setHovered(null)}
-                    onClick={() => pick(hero)}
+                    onClick={() => { getSFX().buttonClick(); pick(hero); }}
                     whileHover={{ y: -8, scale: 1.03 }}
                     animate={isPicked ? { scale: [1, 1.08, 0.92], opacity: [1, 1, 0], transition: { duration: 0.45 } } : {}}
                     style={{

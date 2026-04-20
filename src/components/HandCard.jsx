@@ -110,7 +110,7 @@ export default function HandCard({ card, selected, disabled, onClick, cardRef, d
     <motion.div
       ref={cardRef}
       onClick={handle}
-      onMouseEnter={(e) => { setHov(true); setMouse({ x: e.clientX, y: e.clientY }); if (typeof audioManager !== "undefined" && audioManager?.play) audioManager.play("hover"); }}
+      onMouseEnter={(e) => { setHov(true); setMouse({ x: e.clientX, y: e.clientY }); getSFX().hover(); }}
       onMouseLeave={() => {
         setHov(false);
         setMouse(null);

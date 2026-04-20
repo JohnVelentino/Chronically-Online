@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
 import { getLib, RC, HEROES, getHeroDeckIds } from "./data/cards.js";
 import { getSFX } from "./audio/sfx.js";
+import { bgMusic } from "./audio/bgMusic.js";
 import { drawCard, initPlayer, makeDeckFrom, mkUid, mulliganHand } from "./engine/gameState.js";
-import { applySpell, applyZuckUltimate, doAttack, playBattlecry, createMinionEntity, damageHero, destroyAllMinions, resolveEndOfTurn, revealHand, startTurn, stealCardFromHandByUid, takeControlOfMinion } from "./engine/combat.js";
+import { applySpell, applyZuckUltimate, doAttack, playBattlecry, createMinionEntity, damageHero, destroyAllMinions, resolveEndOfTurn, revealHand, silenceMinion, startTurn, stealCardFromHandByUid, takeControlOfMinion } from "./engine/combat.js";
 import { runAiTurnSteps } from "./engine/ai.js";
 import ArrowOverlay from "./components/ArrowOverlay.jsx";
 import BoardMinion from "./components/BoardMinion.jsx";
@@ -460,14 +461,16 @@ export default function App() {
 
   useEffect(() => {
     if (!gs) return;
+    let newEntrants = 0;
     ["player", "ai"].forEach(side => {
       const board = gs[side].board.map(card => card.uid);
       const prev = prevBoardUids.current[side] || [];
       board.forEach(uid => {
-        if (!prev.includes(uid)) registerSummonRune(uid);
+        if (!prev.includes(uid)) { registerSummonRune(uid); newEntrants += 1; }
       });
       prevBoardUids.current[side] = board;
     });
+    if (newEntrants > 0) getSFX().summon();
   }, [gs]);
 
   function castSpell(card, targetId) {
@@ -873,6 +876,96 @@ export default function App() {
         ng = { ...ng, player: { ...ng.player, hand: [...ng.player.hand, { ...beastGames, uid: mkUid() }] } };
       }
       pushLog(["🎯 SQUID GAME CHARITY!", "Board wiped. 7 Contestants in arena. Last one standing becomes the Survivor. +20 Armor both heroes."]);
+    } else if (meta.id === "bibi") {
+      const enemyBoard = ng.ai.board || [];
+      let takenName = null;
+      if (enemyBoard.length && ng.player.board.length < 7) {
+        const strongest = [...enemyBoard].sort((a, b) => (b.atk + b.hp) - (a.atk + a.hp))[0];
+        if (strongest) {
+          takenName = strongest.name;
+          ng = takeControlOfMinion(ng, strongest.uid, "player", "permanent", "player", { keepOnKill: true });
+        }
+      }
+      const remainingEnemy = (ng.ai.board || []).slice();
+      for (const m of remainingEnemy) {
+        ng = silenceMinion(ng, m.uid, "player");
+      }
+      ng = { ...ng, ai: { ...ng.ai, ultimateLockedTurns: (ng.ai.ultimateLockedTurns || 0) + 2 } };
+      const newMax = Math.min(10, (ng.player.maxMana || 0) + 2);
+      ng = { ...ng, player: { ...ng.player, maxMana: newMax, mana: Math.min(10, (ng.player.mana || 0) + 2) } };
+      pushLog(["🏛️ COALITION LOCK!", `${takenName ? `Took ${takenName}. ` : ""}Silenced the rest. Enemy ult locked 2 turns. Max Aura +2.`]);
+    } else if (meta.id === "idf") {
+      const reservist = { id: "reservist_token", name: "Reservist", type: "minion", cost: 2, rarity: "common", class: "Israel", atk: 2, hp: 4, emoji: "🪖", keywords: ["taunt"], desc: "Taunt." };
+      for (let i = 0; i < 4; i += 1) {
+        if (ng.player.board.length >= 7) break;
+        ng = { ...ng, player: { ...ng.player, board: [...ng.player.board, createMinionEntity(reservist)] } };
+      }
+      if (ng.player.board.length < 7) {
+        const merkava = { id: "merkava_ult_token", name: "Merkava Tank", type: "minion", cost: 10, rarity: "legendary", class: "Israel", atk: 10, hp: 10, emoji: "🛡️", keywords: ["rush"], desc: "Rush." };
+        ng = { ...ng, player: { ...ng.player, board: [...ng.player.board, createMinionEntity(merkava)] } };
+      }
+      ng = {
+        ...ng,
+        player: {
+          ...ng.player,
+          board: ng.player.board.map(m => ({
+            ...m,
+            tempAttackBonus: (m.tempAttackBonus || 0) + 1,
+            tempAttackExpiresOn: "player",
+            hp: m.hp + 1,
+            maxHp: (m.maxHp ?? m.hp) + 1,
+            atk: (m.baseAtk ?? m.atk) + ((m.tempAttackBonus || 0) + 1) + (m.auraAttackBonus || 0),
+          })),
+        },
+      };
+      for (let i = 0; i < 2; i += 1) {
+        if (ng.player.deck.length && ng.player.hand.length < 10) {
+          const [top, ...rest] = ng.player.deck;
+          ng = { ...ng, player: { ...ng.player, deck: rest, hand: [...ng.player.hand, top] } };
+        }
+      }
+      pushLog(["🪖 TZAV 8!", "4 Reservists (Taunt) + Merkava Tank 10/10 (Rush). +1/+1 to all friendlies this turn. Drew 2."]);
+    } else if (meta.id === "mossad") {
+      const enemyDeck = ng.ai.deck || [];
+      const killCount = Math.floor(enemyDeck.length / 2);
+      if (killCount > 0) {
+        const deckCopy = [...enemyDeck];
+        for (let i = 0; i < killCount; i += 1) {
+          const idx = Math.floor(Math.random() * deckCopy.length);
+          deckCopy.splice(idx, 1);
+        }
+        ng = { ...ng, ai: { ...ng.ai, deck: deckCopy } };
+      }
+      ng = destroyAllMinions(ng, "player");
+      ng = {
+        ...ng,
+        ai: { ...ng.ai, board: [] },
+        visibility: {
+          ...(ng.visibility || {}),
+          aiHandRevealed: true,
+          aiHandRevealedTurns: 3,
+          aiHandRevealedUntil: null,
+        },
+      };
+      if (ng.player.board.length < 7) {
+        const eli = createMinionEntity({
+          id: "eli_cohen_token",
+          name: "Eli Cohen",
+          type: "minion",
+          cost: 0,
+          rarity: "legendary",
+          class: "Israel",
+          atk: 4,
+          hp: 8,
+          emoji: "🎭",
+          keywords: ["eli_cohen_steal"],
+          desc: "End of turn: steal a random card from enemy hand.",
+          effectConfig: { end_of_turn: [{ type: "eli_cohen_steal" }] },
+        });
+        eli.operatorSide = "player";
+        ng = { ...ng, player: { ...ng.player, board: [...ng.player.board, eli] } };
+      }
+      pushLog(["📟 OPERATION GRIM BEEPER!", `Destroyed ${killCount} cards from enemy deck. Wiped their board. Hand revealed 3 turns. Eli Cohen planted — starts stealing.`]);
     } else {
       toast("This hero has no ultimate configured.");
       return;
@@ -1124,6 +1217,13 @@ export default function App() {
     return () => clearTimeout(t);
   }, [ultBurstKey]);
 
+  // Background music: menu track during hero select / menu / gameover; battle track mid-match.
+  useEffect(() => {
+    const battlePhases = ["player_turn", "ai_turn", "mulligan"];
+    if (battlePhases.includes(phase)) bgMusic.play("battle");
+    else bgMusic.play("menu");
+  }, [phase]);
+
   const aiUltimateMeta = gs ? getUltimateMeta({ id: gs.ai.heroId }) : null;
   const aiUnlockedUltCharges = gs ? getUnlockedUltimateCharges(gs.ai.maxMana) : 0;
   const aiUltUsed = gs?.ai?.ultimateUses || 0;
@@ -1198,7 +1298,8 @@ export default function App() {
         )}
         <HeroSelect onSelect={hero => { getSFX().cardPlay(); startGameWithFade(hero); }} />
         <button
-          onClick={() => setDevOpen(true)}
+          onMouseEnter={() => getSFX().hover()}
+          onClick={() => { getSFX().buttonClick(); setDevOpen(true); }}
           style={{
             position: "fixed",
             top: 14,
@@ -1247,8 +1348,8 @@ export default function App() {
           The Gen Z card game. Summon influencers. Cancel your enemies. Win the main character arc.
         </div>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "center" }}>
-          <button onClick={() => setPhase("hero_select")} style={{ background: "linear-gradient(135deg,#1a4a8a,#378ADD)", color: "#fff", border: "none", borderRadius: 10, padding: "14px 40px", fontSize: 16, fontWeight: 900, cursor: "pointer", boxShadow: "0 0 24px rgba(55,138,221,0.5)", letterSpacing: 1 }}>PLAY vs AI</button>
-          <button onClick={() => setDevOpen(true)} style={{ background: "transparent", color: "#FAC775", border: "2px solid #FAC775", borderRadius: 10, padding: "14px 24px", fontSize: 16, fontWeight: 900, cursor: "pointer" }}>Card Forge ✨</button>
+          <button onMouseEnter={() => getSFX().hover()} onClick={() => { getSFX().buttonClick(); setPhase("hero_select"); }} style={{ background: "linear-gradient(135deg,#1a4a8a,#378ADD)", color: "#fff", border: "none", borderRadius: 10, padding: "14px 40px", fontSize: 16, fontWeight: 900, cursor: "pointer", boxShadow: "0 0 24px rgba(55,138,221,0.5)", letterSpacing: 1 }}>PLAY vs AI</button>
+          <button onMouseEnter={() => getSFX().hover()} onClick={() => { getSFX().buttonClick(); setDevOpen(true); }} style={{ background: "transparent", color: "#FAC775", border: "2px solid #FAC775", borderRadius: 10, padding: "14px 24px", fontSize: 16, fontWeight: 900, cursor: "pointer" }}>Card Forge ✨</button>
         </div>
         {activeDeck && (
           <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(55,138,221,0.08)", border: "1px solid rgba(55,138,221,0.25)", borderRadius: 8, padding: "8px 14px" }}>
@@ -1789,6 +1890,7 @@ export default function App() {
             <button onClick={() => { setSelAtk(null); setTgtSpell(null); setSelCard(null); setHovTarget(null); selAtkRef.current = null; toast("Cancelled."); }} style={{ background: "transparent", border: "1px solid #E24B4A", color: "#E24B4A", borderRadius: 6, padding: "6px 14px", fontSize: 11, cursor: "pointer", fontWeight: 800, whiteSpace: "nowrap" }}>Cancel</button>
           )}
           <motion.button
+            onMouseEnter={() => { if (phase === "player_turn") getSFX().hover(); }}
             onClick={endTurn}
             disabled={phase !== "player_turn"}
             animate={phase === "player_turn" ? { boxShadow: ["0 0 16px rgba(13,128,80,0.5)", "0 0 28px rgba(13,128,80,0.85)", "0 0 16px rgba(13,128,80,0.5)"] } : { boxShadow: "none" }}
@@ -1934,13 +2036,15 @@ export default function App() {
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {[
-              { k: "Taunt",     c: "#EF9F27", d: "Must attack me first" },
-              { k: "Battlecry", c: "#378ADD", d: "Triggers when played" },
-              { k: "Charge",    c: "#1D9E75", d: "Can attack immediately" },
-              { k: "Elusive",   c: "#9b59dd", d: "Can't be targeted by spells" },
+              { k: "Taunt",       c: "#EF9F27", d: "Must attack me first" },
+              { k: "Battlecry",   c: "#378ADD", d: "Triggers when played" },
+              { k: "Charge",      c: "#1D9E75", d: "Can attack immediately" },
+              { k: "Rush",        c: "#5ad1a4", d: "Can attack minions right away" },
+              { k: "Deathrattle", c: "#c94545", d: "Triggers when it dies" },
+              { k: "Elusive",     c: "#9b59dd", d: "Can't be targeted by spells" },
             ].map(({ k, c, d }) => (
               <div key={k} style={{ display: "flex", alignItems: "baseline", gap: 6, fontSize: 10, lineHeight: 1.3 }}>
-                <span style={{ color: c, fontWeight: 900, letterSpacing: 0.4, minWidth: 56, flexShrink: 0 }}>{k}</span>
+                <span style={{ color: c, fontWeight: 900, letterSpacing: 0.4, minWidth: 72, flexShrink: 0 }}>{k}</span>
                 <span style={{ color: "#9cb4d2", fontWeight: 500 }}>— {d}</span>
               </div>
             ))}

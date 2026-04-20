@@ -18,6 +18,9 @@ import {
   getHeroPortraitOverride,
   setHeroPortraitOverride,
   resetHeroPortraitOverride,
+  exportCustomizations,
+  importCustomizations,
+  clearAllCustomizations,
 } from "../data/cards.js";
 import { mkUid } from "../engine/gameState.js";
 import { getSFX } from "../audio/sfx.js";
@@ -534,6 +537,53 @@ export default function CardCreator({ onClose, savedDecks = [], onSavedDecksChan
   const [deckSearch, setDeckSearch] = useState("");
   const [hovLibCard, setHovLibCard] = useState(null); // { card, rect }
   const fileRef = useRef(null);
+  const fileInputRef = useRef(null);
+
+  function handleExport() {
+    const bundle = exportCustomizations();
+    const json = JSON.stringify(bundle, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    a.href = url;
+    a.download = `chronically-online-customizations-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function handleImportFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const bundle = JSON.parse(String(ev.target?.result || ""));
+        const confirmMsg = `Import "${file.name}"?\n\nCustom cards: ${bundle.customCards?.length ?? 0}\nOverrides: ${Object.keys(bundle.overrides || {}).length}\nDeleted IDs: ${bundle.deletedIds?.length ?? 0}\nHero decks: ${Object.keys(bundle.heroDecks || {}).length}\nHero portraits: ${Object.keys(bundle.heroPortraits || {}).length}\n\nThis REPLACES your current customizations. Continue?`;
+        if (!window.confirm(confirmMsg)) { e.target.value = ""; return; }
+        const result = importCustomizations(bundle, { merge: false });
+        if (!result.ok) { window.alert(`Import failed: ${result.error}`); }
+        else {
+          setCustoms(getCustomCards());
+          window.alert("Import successful. Reload to see all changes applied.");
+        }
+      } catch (err) {
+        window.alert(`Couldn't parse file: ${err.message}`);
+      }
+      e.target.value = "";
+    };
+    reader.readAsText(file);
+  }
+
+  function handleWipe() {
+    if (!window.confirm("Wipe ALL customizations? Cannot be undone.")) return;
+    if (!window.confirm("Really wipe everything? (second check)")) return;
+    clearAllCustomizations();
+    setCustoms(getCustomCards());
+    window.alert("All customizations cleared. Reload to see defaults.");
+  }
 
   const setField = (k, v) => setF(x => ({ ...x, [k]: v }));
   const keywordsList = useMemo(() => (f.keywords || "").split(",").map(s => s.trim()).filter(Boolean), [f.keywords]);
@@ -853,7 +903,37 @@ export default function CardCreator({ onClose, savedDecks = [], onSavedDecksChan
     <div style={{ position: "absolute", inset: 0, background: "rgba(2,5,12,0.98)", zIndex: 1000, overflowY: "auto", boxSizing: "border-box", display: "flex", flexDirection: "column" }}>
       <div style={{ background: "#060c18", borderBottom: "1px solid #0d1e30", padding: "14px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
         <div style={{ fontSize: 20, fontWeight: 900, color: "#FAC775", letterSpacing: 1 }}>CARD FORGER</div>
-        <button onClick={onClose} style={{ background: "transparent", border: "1px solid #1e3050", color: "#445", borderRadius: 8, padding: "8px 18px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Close</button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button
+            onClick={handleExport}
+            title="Download all your edits as a .json file. Commit this to src/data/customizations.json to ship changes to everyone."
+            style={{ background: "linear-gradient(135deg,#0d3a28,#176042)", border: "1px solid #3b9272", color: "#c9f1dd", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 12, fontWeight: 800, letterSpacing: 0.4 }}
+          >
+            ⬇ Export JSON
+          </button>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            title="Load a previously exported .json bundle. Replaces current edits."
+            style={{ background: "linear-gradient(135deg,#3a2a0d,#704e14)", border: "1px solid #c79037", color: "#ffe6bf", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 12, fontWeight: 800, letterSpacing: 0.4 }}
+          >
+            ⬆ Import JSON
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/json,.json"
+            onChange={handleImportFile}
+            style={{ display: "none" }}
+          />
+          <button
+            onClick={handleWipe}
+            title="Wipe every custom card, override, deleted-id, hero deck, and portrait. Cannot be undone."
+            style={{ background: "transparent", border: "1px solid #6e2a2a", color: "#b36a6a", borderRadius: 8, padding: "8px 12px", cursor: "pointer", fontSize: 11, fontWeight: 800 }}
+          >
+            Wipe All
+          </button>
+          <button onClick={onClose} style={{ background: "transparent", border: "1px solid #1e3050", color: "#445", borderRadius: 8, padding: "8px 18px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>Close</button>
+        </div>
       </div>
       <div style={{ background: "#04080f", borderBottom: "1px solid #0d1e30", display: "flex", flexShrink: 0 }}>
         <button onClick={() => setTab("forge")} style={{ background: tab === "forge" ? "linear-gradient(135deg,#0d1e38,#1a3a64)" : "transparent", border: "none", borderBottom: tab === "forge" ? "2px solid #378ADD" : "2px solid transparent", color: tab === "forge" ? "#85B7EB" : "#445", padding: "10px 20px", fontSize: 12, fontWeight: 900, cursor: "pointer" }}>Forge</button>
