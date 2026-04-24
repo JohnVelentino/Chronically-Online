@@ -14,7 +14,7 @@ export function getUltimateMeta(hero) {
     cost: 0,
     emoji: "🛰️",
     themeColor: "#6dc6d6",
-    desc: "Take control of up to 2 enemy minions and steal 1 card from their hand.",
+    desc: "Take control of up to 2 enemy minions and steal up to 2 cards from their hand.",
   };
   if (heroId === "elon") return {
     id: "elon",

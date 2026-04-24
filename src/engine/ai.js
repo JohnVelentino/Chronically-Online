@@ -1,5 +1,5 @@
 import { drawCard, mkUid } from "./gameState.js";
-import { applySpell, applyZuckUltimate, playBattlecry, doAttack, createMinionEntity, destroyAllMinions, damageHero, takeControlOfMinion, stealCardFromHandByUid, silenceMinion } from "./combat.js";
+import { applySpell, applyZuckUltimate, consumeAlgoTweak, playBattlecry, doAttack, createMinionEntity, destroyAllMinions, damageHero, takeControlOfMinion, stealCardFromHandByUid, silenceMinion } from "./combat.js";
 import { getLib } from "../data/cards.js";
 
 function getUnlockedCharges(maxMana) {
@@ -277,6 +277,7 @@ export function runAiTurnSteps(gs) {
     if (noT.length) {
       const s = noT[0];
       gs = { ...gs, ai: { ...gs.ai, hand: gs.ai.hand.filter(c => c.uid !== s.uid), mana: gs.ai.mana - s.cost } };
+      if (gs.ai.algoTweakActive && s.effect !== "algo_tweak") gs = consumeAlgoTweak(gs, "ai");
       const r = applySpell(s.effectId || s.effect, null, gs, "ai", s);
       gs = r.gs;
       steps.push({ type: "play_card", card: s, verb: "plays", gs, log: ["AI plays " + s.name, ...r.log] });
@@ -284,6 +285,7 @@ export function runAiTurnSteps(gs) {
       const s = buffT[0]; const tgt = strongestMinion(gs.ai.board);
       if (!tgt) break;
       gs = { ...gs, ai: { ...gs.ai, hand: gs.ai.hand.filter(c => c.uid !== s.uid), mana: gs.ai.mana - s.cost } };
+      if (gs.ai.algoTweakActive && s.effect !== "algo_tweak") gs = consumeAlgoTweak(gs, "ai");
       const r = applySpell(s.effectId || s.effect, tgt.uid, gs, "ai", s);
       gs = r.gs;
       steps.push({ type: "play_card", card: s, verb: "casts", gs, log: ["AI casts " + s.name + " on " + tgt.name, ...r.log] });
@@ -291,6 +293,7 @@ export function runAiTurnSteps(gs) {
       const s = dmgT[0]; const tgt = highestThreat(spellableEnemy);
       if (!tgt) break;
       gs = { ...gs, ai: { ...gs.ai, hand: gs.ai.hand.filter(c => c.uid !== s.uid), mana: gs.ai.mana - s.cost } };
+      if (gs.ai.algoTweakActive && s.effect !== "algo_tweak") gs = consumeAlgoTweak(gs, "ai");
       const r = applySpell(s.effectId || s.effect, tgt.uid, gs, "ai", s);
       gs = r.gs;
       steps.push({ type: "play_card", card: s, verb: "casts", gs, log: ["AI casts " + s.name, ...r.log] });
@@ -299,6 +302,7 @@ export function runAiTurnSteps(gs) {
       const card = mins[0];
       const minion = createMinionEntity(card);
       gs = { ...gs, ai: { ...gs.ai, hand: gs.ai.hand.filter(c => c.uid !== card.uid), mana: gs.ai.mana - card.cost, board: [...gs.ai.board, minion] } };
+      if (gs.ai.algoTweakActive) gs = consumeAlgoTweak(gs, "ai");
       const r = playBattlecry(minion, gs, "ai");
       gs = r.gs;
       steps.push({ type: "play_card", card, verb: "plays", gs, log: ["AI plays " + card.name, ...r.log] });

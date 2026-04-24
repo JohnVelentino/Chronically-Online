@@ -26,9 +26,7 @@ export default function RulesScreen({ onContinue }) {
       transition={{ duration: 0.35 }}
       style={{
         position: "fixed", inset: 0, zIndex: 9100,
-        background: "radial-gradient(ellipse at center, rgba(15,10,28,0.75) 0%, rgba(4,4,10,0.95) 80%)",
-        backdropFilter: "blur(14px)",
-        WebkitBackdropFilter: "blur(14px)",
+        background: "radial-gradient(ellipse at center, rgba(15,10,28,0.98) 0%, rgba(4,4,10,1) 80%)",
         display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
         gap: 28, padding: 32,
       }}
@@ -66,9 +64,9 @@ export default function RulesScreen({ onContinue }) {
         {RULES.map((rule, idx) => (
           <motion.li
             key={idx}
-            initial={{ x: -30, opacity: 0 }}
+            initial={{ x: -20, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
-            transition={{ duration: 0.4, delay: 0.3 + idx * 0.1 }}
+            transition={{ duration: 0.25, delay: 0.1 + idx * 0.05 }}
             style={{
               display: "flex", alignItems: "flex-start", gap: 14,
               padding: "14px 18px",
@@ -97,16 +95,16 @@ export default function RulesScreen({ onContinue }) {
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ duration: 0.4, delay: 0.85 }}
+        transition={{ duration: 0.3, delay: 0.45 }}
         style={{ fontSize: 17, color: "#ffd87a", fontWeight: 800, textShadow: "0 0 12px rgba(243,183,58,0.5)", textAlign: "center", letterSpacing: 0.6 }}
       >
         NOW GO GO GAME END THIS FUCKER GO GO COME ON!!!
       </motion.div>
 
       <motion.div
-        initial={{ y: 20, opacity: 0 }}
+        initial={{ y: 12, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.4, delay: 0.95 }}
+        transition={{ duration: 0.3, delay: 0.55 }}
         style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}
       >
         <motion.button

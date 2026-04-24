@@ -108,9 +108,11 @@ export default function HeroSelect({ onSelect }) {
 
   function pick(hero) {
     setChosen(hero.id);
+    getSFX().blammm();
     const pickedPortrait = customPortraits[hero.id] || hero.portrait || null;
     const pickedHero = pickedPortrait ? { ...hero, portrait: pickedPortrait } : hero;
-    setTimeout(() => onSelect(pickedHero), 480);
+    // Hold the glow burst a beat before handing off to fade-to-game.
+    setTimeout(() => onSelect(pickedHero), 900);
   }
 
   const classes = [
@@ -150,17 +152,26 @@ export default function HeroSelect({ onSelect }) {
   const activeClass = classes.find(cls => cls.id === selectedClass) || null;
 
   return (
-    <div style={{
-      minHeight: "100vh", background: "#04080f",
-      display: "flex", flexDirection: "column", alignItems: "center",
-      fontFamily: "system-ui, sans-serif", color: "#fff",
-      padding: "36px 24px 24px", boxSizing: "border-box",
-      position: "relative", overflow: "hidden",
-    }}>
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.9, ease: "easeOut" }}
+      style={{
+        minHeight: "100vh", background: "#04080f",
+        display: "flex", flexDirection: "column", alignItems: "center",
+        fontFamily: "system-ui, sans-serif", color: "#fff",
+        padding: "12px 24px 24px", boxSizing: "border-box",
+        position: "relative", overflow: "hidden",
+      }}
+    >
       <style>{`
         @keyframes pulse{0%,100%{opacity:0.6}50%{opacity:1}}
         @keyframes ultShimmer{0%{transform:translateX(-120%)}100%{transform:translateX(120%)}}
         @keyframes ultBreathe{0%,100%{filter:drop-shadow(0 0 10px currentColor)}50%{filter:drop-shadow(0 0 22px currentColor)}}
+        @keyframes heroChosenGlow{0%{box-shadow:0 0 0 0 currentColor,0 0 40px currentColor}70%{box-shadow:0 0 0 60px rgba(0,0,0,0),0 0 120px currentColor}100%{box-shadow:0 0 0 0 rgba(0,0,0,0),0 0 0 currentColor}}
+        @keyframes heroChosenRing{0%{transform:scale(0.6);opacity:0.9}100%{transform:scale(2.4);opacity:0}}
+        @keyframes titleDrop{0%{opacity:0;transform:translateY(-18px);letter-spacing:10px}100%{opacity:1;transform:translateY(0);letter-spacing:6px}}
+        @keyframes titleGlowPulse{0%,100%{text-shadow:0 0 40px rgba(55,138,221,0.5)}50%{text-shadow:0 0 60px rgba(55,138,221,0.9),0 0 100px rgba(127,119,221,0.5)}}
       `}</style>
 
       {/* Background glow matching hovered hero */}
@@ -175,28 +186,49 @@ export default function HeroSelect({ onSelect }) {
       }} />
 
       <div style={{ position: "relative", zIndex: 1, width: "100%", maxWidth: 1100 }}>
-        {/* Title */}
-        <div style={{ textAlign: "center", marginBottom: 32 }}>
+        {/* Title — big "Choose Your Class / Hero" drops in on mount */}
+        <div style={{ textAlign: "center", marginBottom: 18 }}>
           <div style={{ fontSize: 10, color: "#EF9F27", fontWeight: 900, letterSpacing: 6, textTransform: "uppercase", marginBottom: 8 }}>
-            {selectedClass ? "choose your hero" : "choose your class"}
+            Chronically Online
           </div>
-          <div style={{ fontSize: 38, fontWeight: 900, letterSpacing: 1, textShadow: "0 0 40px rgba(55,138,221,0.5)" }}>
-            CHRONICALLY ONLINE
-          </div>
+          <motion.div
+            key={selectedClass ? "hero-title" : "class-title"}
+            initial={{ opacity: 0, y: -24, letterSpacing: "14px" }}
+            animate={{ opacity: 1, y: 0, letterSpacing: "3px" }}
+            transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+            style={{
+              fontSize: 44, fontWeight: 900, lineHeight: 1,
+              color: "#fff",
+              textShadow: "0 0 40px rgba(55,138,221,0.6), 0 0 90px rgba(127,119,221,0.35)",
+              animation: "titleGlowPulse 3.2s ease-in-out infinite",
+              textTransform: "uppercase",
+            }}
+          >
+            {selectedClass ? "Choose Your Hero" : "Choose Your Class"}
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.5, duration: 0.6 }}
+            style={{ fontSize: 12, color: "#6a8ab0", marginTop: 6, letterSpacing: 1, fontStyle: "italic" }}
+          >
+            {selectedClass ? "Pick your fighter. This shapes your whole run." : "Four factions. One main character arc."}
+          </motion.div>
         </div>
 
         {!selectedClass && (
-          <div style={{ display: "flex", justifyContent: "center", gap: 32, marginBottom: 36, flexWrap: "wrap" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 240px)", justifyContent: "center", columnGap: 120, rowGap: 20, marginBottom: 24 }}>
             {classes.map(cls => (
               <motion.div
                 key={cls.id}
+                onMouseEnter={() => getSFX().plick()}
                 onClick={() => { getSFX().buttonClick(); setSelectedClass(cls.id); setHovered(null); setChosen(null); }}
                 whileHover={{ y: -8, scale: 1.03 }}
                 style={{
-                  width: 260, cursor: "pointer",
+                  width: 240, cursor: "pointer",
                   background: `linear-gradient(160deg, ${cls.themeColor}22, #060c18)`,
                   border: "2px solid " + cls.themeColor,
-                  borderRadius: 22, padding: "28px 24px 24px",
+                  borderRadius: 22, padding: "20px 22px 18px",
                   boxShadow: `0 0 34px ${cls.glowColor}, 0 8px 32px rgba(0,0,0,0.55)`,
                   userSelect: "none",
                 }}
@@ -240,27 +272,55 @@ export default function HeroSelect({ onSelect }) {
                 return (
                   <motion.div
                     key={hero.id}
-                    onMouseEnter={() => setHovered(hero)}
+                    onMouseEnter={() => { setHovered(hero); getSFX().plick(); }}
                     onMouseLeave={() => setHovered(null)}
-                    onClick={() => { getSFX().buttonClick(); pick(hero); }}
+                    onClick={() => pick(hero)}
                     whileHover={{ y: -8, scale: 1.03 }}
-                    animate={isPicked ? { scale: [1, 1.08, 0.92], opacity: [1, 1, 0], transition: { duration: 0.45 } } : {}}
+                    animate={isPicked ? {
+                      scale: [1, 1.18, 1.08, 1.04],
+                      transition: { duration: 0.85, times: [0, 0.25, 0.55, 1], ease: "easeOut" },
+                    } : {}}
                     style={{
                       width: 200, cursor: "pointer",
-                      background: isHov
+                      background: isPicked
+                        ? `radial-gradient(circle at 50% 40%, ${hero.themeColor}55, #060c18 70%)`
+                        : isHov
                         ? `linear-gradient(160deg, ${hero.themeColor}28, #060c18)`
                         : "linear-gradient(160deg,#080e1a,#060c18)",
-                      border: "2px solid " + (isHov ? hero.themeColor : "#0d1830"),
+                      border: "2px solid " + (isPicked ? hero.themeColor : isHov ? hero.themeColor : "#0d1830"),
                       borderRadius: 20, padding: "24px 20px 20px",
-                      boxShadow: isHov
+                      boxShadow: isPicked
+                        ? `0 0 0 3px ${hero.themeColor}, 0 0 80px ${hero.themeColor}, 0 0 160px ${hero.glowColor}, 0 12px 40px rgba(0,0,0,0.8)`
+                        : isHov
                         ? `0 0 40px ${hero.glowColor}, 0 8px 32px rgba(0,0,0,0.6)`
                         : "0 4px 20px rgba(0,0,0,0.5)",
-                      transition: "border-color 0.25s, background 0.25s, box-shadow 0.25s",
+                      transition: "border-color 0.25s, background 0.25s, box-shadow 0.35s",
                       userSelect: "none",
                       position: "relative",
-                      zIndex: isHov ? 50 : 1,
+                      zIndex: isPicked ? 60 : isHov ? 50 : 1,
+                      color: hero.themeColor,
                     }}
                   >
+                    {/* Expanding ring burst on pick */}
+                    {isPicked && (
+                      <>
+                        <div style={{
+                          position: "absolute", inset: -10, borderRadius: 24,
+                          border: `3px solid ${hero.themeColor}`,
+                          pointerEvents: "none",
+                          animation: "heroChosenRing 0.9s ease-out forwards",
+                          color: hero.themeColor,
+                        }} />
+                        <div style={{
+                          position: "absolute", inset: -20, borderRadius: 28,
+                          border: `2px solid ${hero.themeColor}`,
+                          pointerEvents: "none",
+                          animation: "heroChosenRing 0.9s ease-out 0.15s forwards",
+                          color: hero.themeColor,
+                          opacity: 0.7,
+                        }} />
+                      </>
+                    )}
                     <AnimatePresence>
                       {isHov && (
                         <motion.div
@@ -472,6 +532,6 @@ export default function HeroSelect({ onSelect }) {
           )}
         </AnimatePresence>
       </div>
-    </div>
+    </motion.div>
   );
 }

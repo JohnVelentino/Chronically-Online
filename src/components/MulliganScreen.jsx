@@ -1,9 +1,11 @@
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import HandCard from "./HandCard.jsx";
+import TemplateCardFace from "./TemplateCardFace.jsx";
 
 export default function MulliganScreen({ hand, onConfirm }) {
   const [selected, setSelected] = useState(new Set());
+  const [hovered, setHovered] = useState(null); // { card, x, y }
 
   const toggle = (uid) => {
     setSelected(prev => {
@@ -23,9 +25,7 @@ export default function MulliganScreen({ hand, onConfirm }) {
       transition={{ duration: 0.35 }}
       style={{
         position: "fixed", inset: 0, zIndex: 9000,
-        background: "radial-gradient(ellipse at center, rgba(20,30,55,0.72) 0%, rgba(4,8,18,0.92) 80%)",
-        backdropFilter: "blur(10px)",
-        WebkitBackdropFilter: "blur(10px)",
+        background: "radial-gradient(ellipse at center, rgba(20,30,55,0.98) 0%, rgba(4,8,18,1) 80%)",
         display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
         gap: 36, padding: 32,
       }}
@@ -61,11 +61,14 @@ export default function MulliganScreen({ hand, onConfirm }) {
             return (
               <motion.div
                 key={card.uid}
-                initial={{ y: 80, opacity: 0, rotate: -10 }}
-                animate={{ y: 0, opacity: 1, rotate: 0 }}
-                transition={{ duration: 0.45, delay: 0.2 + idx * 0.08, ease: [0.2, 0.9, 0.35, 1] }}
+                initial={{ y: 40, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ duration: 0.25, delay: 0.08 + idx * 0.04, ease: [0.2, 0.9, 0.35, 1] }}
                 whileHover={{ y: -10, scale: 1.03 }}
                 onClick={() => toggle(card.uid)}
+                onMouseEnter={(e) => setHovered({ card, x: e.clientX, y: e.clientY })}
+                onMouseMove={(e) => setHovered(prev => prev?.card?.uid === card.uid ? { ...prev, x: e.clientX, y: e.clientY } : prev)}
+                onMouseLeave={() => setHovered(prev => prev?.card?.uid === card.uid ? null : prev)}
                 style={{
                   position: "relative", cursor: "pointer",
                   filter: isSelected ? "grayscale(0.5) brightness(0.55)" : "none",
@@ -122,6 +125,33 @@ export default function MulliganScreen({ hand, onConfirm }) {
       >
         {selected.size === 0 ? "Keep All" : `Mulligan ${selected.size} → Lock In`}
       </motion.button>
+
+      <AnimatePresence>
+        {hovered && (() => {
+          const PREVIEW_W = 280;
+          const PREVIEW_H = 400;
+          const GAP = 22;
+          const cx = hovered.x ?? 200;
+          const cy = hovered.y ?? 200;
+          const wantLeft = cx + GAP + PREVIEW_W + 8 > window.innerWidth;
+          const rawLeft = wantLeft ? cx - GAP - PREVIEW_W : cx + GAP;
+          const left = Math.max(8, Math.min(rawLeft, window.innerWidth - PREVIEW_W - 8));
+          const rawTop = cy - PREVIEW_H / 2;
+          const top = Math.max(8, Math.min(rawTop, window.innerHeight - PREVIEW_H - 8));
+          return (
+            <motion.div
+              key={"mull-preview-" + hovered.card.uid}
+              initial={{ opacity: 0, scale: 0.94 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.94 }}
+              transition={{ duration: 0.14 }}
+              style={{ position: "fixed", left, top, width: PREVIEW_W, height: PREVIEW_H, borderRadius: 20, zIndex: 9500, pointerEvents: "none", boxShadow: "0 24px 54px rgba(0,0,0,0.85), 0 0 36px rgba(240,184,71,0.45)" }}
+            >
+              <TemplateCardFace card={hovered.card} width={PREVIEW_W} height={PREVIEW_H} />
+            </motion.div>
+          );
+        })()}
+      </AnimatePresence>
     </motion.div>
   );
 }

@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, LayoutGroup, motion } from "framer-motion";
 import { getLib, RC, HEROES, getHeroDeckIds } from "./data/cards.js";
 import { getSFX } from "./audio/sfx.js";
 import { bgMusic } from "./audio/bgMusic.js";
 import { drawCard, initPlayer, makeDeckFrom, mkUid, mulliganHand } from "./engine/gameState.js";
-import { applySpell, applyZuckUltimate, doAttack, playBattlecry, createMinionEntity, damageHero, destroyAllMinions, resolveEndOfTurn, revealHand, silenceMinion, startTurn, stealCardFromHandByUid, takeControlOfMinion } from "./engine/combat.js";
+import { applySpell, applyZuckUltimate, consumeAlgoTweak, doAttack, playBattlecry, createMinionEntity, damageHero, destroyAllMinions, resolveEndOfTurn, revealHand, silenceMinion, startTurn, stealCardFromHandByUid, takeControlOfMinion } from "./engine/combat.js";
 import { runAiTurnSteps } from "./engine/ai.js";
 import ArrowOverlay from "./components/ArrowOverlay.jsx";
 import BoardMinion from "./components/BoardMinion.jsx";
@@ -17,6 +17,8 @@ import HeroPortrait from "./components/HeroPortrait.jsx";
 import DamageNumber from "./components/DamageNumber.jsx";
 import CardBack from "./components/CardBack.jsx";
 import HeroSelect from "./components/HeroSelect.jsx";
+import AudioControls from "./components/AudioControls.jsx";
+import VsRouletteScreen from "./components/VsRouletteScreen.jsx";
 import TemplateCardFace from "./components/TemplateCardFace.jsx";
 import UltimateTooltip from "./components/UltimateTooltip.jsx";
 import useDevConfig from "./dev/useDevConfig.js";
@@ -76,7 +78,25 @@ function getUnlockedUltimateCharges(maxMana) {
 
 export default function App() {
   const [gs, setGs] = useState(null);
-  const [phase, setPhase] = useState("hero_select");
+  const [phase, setPhase] = useState("menu");
+  const menuStars = useMemo(() => {
+    const arr = [];
+    const rand = (min, max) => min + Math.random() * (max - min);
+    for (let i = 0; i < 160; i++) {
+      const layer = i < 90 ? "far" : i < 140 ? "mid" : "near";
+      const size = layer === "far" ? rand(0.8, 1.4) : layer === "mid" ? rand(1.3, 2) : rand(2, 2.8);
+      arr.push({
+        id: i,
+        x: Math.random() * 100,
+        y: Math.random() * 100,
+        size,
+        layer,
+        twinkleDelay: Math.random() * 6,
+        twinkleDur: 2.4 + Math.random() * 4.2,
+      });
+    }
+    return arr;
+  }, []);
   const [selectedHero, setSelectedHero] = useState(null);
   const [log, setLog] = useState([]);
   const [selCard, setSelCard] = useState(null);
@@ -108,6 +128,7 @@ export default function App() {
   const [summonRunes, setSummonRunes] = useState([]);
   const [matchFadeActive, setMatchFadeActive] = useState(false);
   const [matchFadeOpaque, setMatchFadeOpaque] = useState(false);
+  const [nextPhaseAfterReveal, setNextPhaseAfterReveal] = useState("player_turn");
   const [isOverPlayZone, setIsOverPlayZone] = useState(false);
   const [ciaUltSelection, setCiaUltSelection] = useState(null);
   const [tateDiscoverChoice, setTateDiscoverChoice] = useState(null);
@@ -154,7 +175,7 @@ export default function App() {
 
   function pushHistory({ card, side, kind, summary }) {
     const hid = mkUid();
-    setGameHistory(prev => [...prev, { ...card, _hid: hid, _side: side, _kind: kind, _summary: summary }]);
+    setGameHistory(prev => [{ ...card, _hid: hid, _side: side, _kind: kind, _summary: summary }, ...prev]);
   }
 
   function toast(m) {
@@ -400,7 +421,8 @@ export default function App() {
       ai: { ...initPlayer(aiHero.name, true, aiDeck), heroId: aiHero.id, maxMana: 0, mana: 0, armor: 0, ultimateUses: 0, ultimateUsedThisTurn: false, portrait: getHeroPortraitFromStorage(aiHero), cardBack: aiHero.cardBack || null, emoji: aiHero.emoji },
     });
     const rulesSeen = (() => { try { return localStorage.getItem("co_rules_seen_v1") === "1"; } catch { return false; } })();
-    setPhase(rulesSeen ? "mulligan" : "rules");
+    setNextPhaseAfterReveal(rulesSeen ? "mulligan" : "rules");
+    setPhase("vs_reveal");
     setLog(["🎮 Game on! No cap."]);
     setWinner(null);
     setSelCard(null);
@@ -423,6 +445,21 @@ export default function App() {
       requestAnimationFrame(() => setMatchFadeOpaque(false));
       setTimeout(() => setMatchFadeActive(false), 260);
     }, 200);
+  }
+
+  // Menu → hero select: fade screen to black, fade out music, switch phase, fade screen back in.
+  // class_select music track is picked up by the phase-based music effect.
+  function goToHeroSelectWithFade() {
+    if (matchFadeActive) return;
+    getSFX().blam();
+    // Keep menu music playing into hero_select — don't fade out.
+    setMatchFadeActive(true);
+    requestAnimationFrame(() => setMatchFadeOpaque(true));
+    setTimeout(() => {
+      setPhase("hero_select");
+      requestAnimationFrame(() => setMatchFadeOpaque(false));
+      setTimeout(() => setMatchFadeActive(false), 700);
+    }, 850);
   }
 
   function handleCardDragStart(card) {
@@ -486,6 +523,9 @@ export default function App() {
     getSFX().spellCast();
     const nh = gs.player.hand.filter(c => c.uid !== card.uid);
     let ng = { ...gs, player: { ...gs.player, hand: nh, mana: gs.player.mana - card.cost } };
+    // Consume algo_tweak window on ANY card played (restores original costs on remaining hand).
+    // Skip when the played card IS algo_tweak itself (it just set the flag).
+    if (ng.player.algoTweakActive && card.effect !== "algo_tweak") ng = consumeAlgoTweak(ng, "player");
     const r = applySpell(card.effectId || card.effect, targetId, ng, "player", card);
     ng = r.gs;
     pushLog(["✨ " + card.name + "!", ...r.log]);
@@ -556,6 +596,7 @@ export default function App() {
     const nh = gs.player.hand.filter(c => c.uid !== card.uid);
     const minion = createMinionEntity(card);
     let ng = { ...gs, player: { ...gs.player, hand: nh, mana: gs.player.mana - card.cost, board: [...gs.player.board, minion] } };
+    if (ng.player.algoTweakActive) ng = consumeAlgoTweak(ng, "player");
     const r = playBattlecry(minion, ng, "player");
     ng = r.gs;
     pushLog(["🃏 " + card.name + " enters!", ...r.log]);
@@ -891,9 +932,9 @@ export default function App() {
         ng = silenceMinion(ng, m.uid, "player");
       }
       ng = { ...ng, ai: { ...ng.ai, ultimateLockedTurns: (ng.ai.ultimateLockedTurns || 0) + 2 } };
-      const newMax = Math.min(10, (ng.player.maxMana || 0) + 2);
-      ng = { ...ng, player: { ...ng.player, maxMana: newMax, mana: Math.min(10, (ng.player.mana || 0) + 2) } };
-      pushLog(["🏛️ COALITION LOCK!", `${takenName ? `Took ${takenName}. ` : ""}Silenced the rest. Enemy ult locked 2 turns. Max Aura +2.`]);
+      const newMax = (ng.player.maxMana || 0) + 2;
+      ng = { ...ng, player: { ...ng.player, maxMana: newMax, mana: Math.min(newMax, (ng.player.mana || 0) + 2) } };
+      pushLog(["🏛️ COALITION LOCK!", `${takenName ? `Took ${takenName}. ` : ""}Silenced the rest. Enemy ult locked 2 turns. Max Aura +2 (now ${newMax}).`]);
     } else if (meta.id === "idf") {
       const reservist = { id: "reservist_token", name: "Reservist", type: "minion", cost: 2, rarity: "common", class: "Israel", atk: 2, hp: 4, emoji: "🪖", keywords: ["taunt"], desc: "Taunt." };
       for (let i = 0; i < 4; i += 1) {
@@ -1031,7 +1072,9 @@ export default function App() {
     setGs(baseGs);
 
     schedule(() => {
-      const aiMax = Math.min(10, (baseGs.ai.maxMana || 0) + 1 + (baseGs.ai.pendingManaNextTurn || 0));
+      const aiCurMax = baseGs.ai.maxMana || 0;
+      const aiCap = Math.max(10, aiCurMax);
+      const aiMax = Math.min(aiCap, aiCurMax + 1 + (baseGs.ai.pendingManaNextTurn || 0));
       const aiTurnState = startTurn(baseGs, "ai");
       const startGs = {
         ...aiTurnState,
@@ -1074,13 +1117,13 @@ export default function App() {
             schedule(() => {
               setFlyingCard(null);
               // Add to persistent history
-              setGameHistory(prev => [...prev, {
+              setGameHistory(prev => [{
                 ...step.card,
                 _hid: flyId,
                 _side: "ai",
                 _kind: step.verb === "casts" ? "cast" : "play",
                 _summary: `Enemy ${step.verb} ${step.card.name}`,
-              }]);
+              }, ...prev]);
             }, FLY_DURATION);
 
             // Apply game state after overlay dismissed
@@ -1184,7 +1227,9 @@ export default function App() {
       const endTurnResolved = resolveEndOfTurn(ng, "ai");
       let nextTurnGs = startTurn(endTurnResolved.gs, "player");
       if (endTurnResolved.log?.length) pushLog(endTurnResolved.log);
-      const pMax = Math.min(10, (nextTurnGs.player.maxMana || 0) + 1 + (nextTurnGs.player.pendingManaNextTurn || 0));
+      const pCurMax = nextTurnGs.player.maxMana || 0;
+      const pCap = Math.max(10, pCurMax);
+      const pMax = Math.min(pCap, pCurMax + 1 + (nextTurnGs.player.pendingManaNextTurn || 0));
       nextTurnGs = { ...nextTurnGs, player: { ...nextTurnGs.player, maxMana: pMax, mana: pMax, pendingManaNextTurn: 0, ultimateUsedThisTurn: false, tempAuraBonus: 0 } };
       const finalNg = handlePlayerDraw(nextTurnGs, { pMax });
       getSFX().drawCard();
@@ -1217,9 +1262,9 @@ export default function App() {
     return () => clearTimeout(t);
   }, [ultBurstKey]);
 
-  // Background music: menu track during hero select / menu / gameover; battle track mid-match.
+  // Background music: menu / class_select / battle based on phase.
   useEffect(() => {
-    const battlePhases = ["player_turn", "ai_turn", "mulligan"];
+    const battlePhases = ["player_turn", "ai_turn", "mulligan", "rules", "vs_reveal"];
     if (battlePhases.includes(phase)) bgMusic.play("battle");
     else bgMusic.play("menu");
   }, [phase]);
@@ -1296,7 +1341,7 @@ export default function App() {
             onSelectDeck={setActiveDeck}
           />
         )}
-        <HeroSelect onSelect={hero => { getSFX().cardPlay(); startGameWithFade(hero); }} />
+        <HeroSelect onSelect={hero => { startGameWithFade(hero); }} />
         <button
           onMouseEnter={() => getSFX().hover()}
           onClick={() => { getSFX().buttonClick(); setDevOpen(true); }}
@@ -1331,36 +1376,343 @@ export default function App() {
             }}
           />
         )}
+        <AudioControls />
       </div>
     );
   }
 
   if (phase === "menu") {
     return (
-      <div style={{ minHeight: 600, background: "#04080f", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 24, padding: 40, position: "relative" }}>
-        <style>{`@keyframes pulse{0%,100%{opacity:0.6}50%{opacity:1}} @keyframes flashFade{0%{opacity:1}100%{opacity:0}} @keyframes floatUp{0%{transform:translateY(0)}50%{transform:translateY(-8px)}100%{transform:translateY(0)}}`}</style>
+      <div style={{
+        minHeight: "100vh", width: "100%",
+        background: "radial-gradient(ellipse 120% 70% at 50% 20%, rgba(30,60,120,0.35), transparent 60%), radial-gradient(ellipse 80% 50% at 80% 90%, rgba(90,50,140,0.22), transparent 60%), radial-gradient(ellipse 80% 50% at 15% 85%, rgba(25,90,160,0.18), transparent 60%), linear-gradient(180deg, #02050d 0%, #000208 100%)",
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+        gap: 30, padding: "48px 24px", position: "relative", overflow: "hidden",
+        fontFamily: "system-ui, sans-serif",
+      }}>
+        <style>{`
+          @keyframes menuPulse{0%,100%{opacity:0.55;transform:scale(1)}50%{opacity:1;transform:scale(1.02)}}
+          @keyframes menuShimmer{0%{background-position:-200% 50%}100%{background-position:200% 50%}}
+          @keyframes menuFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+          @keyframes menuTwinkle{0%,100%{opacity:0.25;transform:scale(1)}50%{opacity:1;transform:scale(1.15)}}
+          @keyframes menuStarDrift{0%{transform:translateY(0)}100%{transform:translateY(-30px)}}
+          @keyframes menuNebula{0%,100%{opacity:0.35;transform:scale(1) rotate(0deg)}50%{opacity:0.55;transform:scale(1.05) rotate(3deg)}}
+          @keyframes menuCinematicFade{0%{opacity:1}100%{opacity:0}}
+          @keyframes menuDropIn{0%{transform:translate3d(0,-140px,0) scale(0.94);opacity:0;filter:blur(14px)}60%{filter:blur(1px)}100%{transform:translate3d(0,0,0) scale(1);opacity:1;filter:blur(0)}}
+          @keyframes menuTitleDrop{0%{transform:translate3d(0,-200px,0);opacity:0;filter:blur(22px);letter-spacing:28px}55%{filter:blur(2px);opacity:1}100%{transform:translate3d(0,0,0);opacity:1;filter:blur(0);letter-spacing:4px}}
+          @keyframes menuRise{0%{transform:translate3d(0,48px,0) scale(0.98);opacity:0;filter:blur(8px)}100%{transform:translate3d(0,0,0) scale(1);opacity:1;filter:blur(0)}}
+          @keyframes menuSoftFade{0%{transform:translate3d(0,14px,0);opacity:0;filter:blur(4px)}100%{transform:translate3d(0,0,0);opacity:1;filter:blur(0)}}
+          @keyframes menuBadgeDrop{0%{transform:translate3d(0,-80px,0) scale(0.9);opacity:0;filter:blur(10px)}100%{transform:translate3d(0,0,0) scale(1);opacity:1;filter:blur(0)}}
+          .menu-cinematic-veil{position:fixed;inset:0;background:#000;z-index:50;pointer-events:none;animation:menuCinematicFade 1.3s cubic-bezier(0.4,0,0.2,1) both;will-change:opacity}
+          .menu-drop{animation:menuDropIn 1.2s cubic-bezier(0.19,1,0.22,1) both;will-change:transform,opacity,filter;backface-visibility:hidden}
+          .menu-rise{animation:menuRise 1.15s cubic-bezier(0.19,1,0.22,1) both;will-change:transform,opacity,filter;backface-visibility:hidden}
+          .menu-soft-fade{animation:menuSoftFade 1.05s cubic-bezier(0.22,1,0.36,1) both;will-change:transform,opacity,filter;backface-visibility:hidden}
+          .menu-stagger > *{will-change:transform,opacity,filter;backface-visibility:hidden}
+          .menu-stagger > *:nth-child(1){animation:menuBadgeDrop 1.1s cubic-bezier(0.19,1,0.22,1) both;animation-delay:0.30s}
+          .menu-stagger > *:nth-child(2){animation:menuTitleDrop 1.35s cubic-bezier(0.19,1,0.22,1) both;animation-delay:0.55s}
+          .menu-stagger > *:nth-child(3){animation:menuTitleDrop 1.35s cubic-bezier(0.19,1,0.22,1) both;animation-delay:0.85s}
+          .menu-stagger > *:nth-child(4){animation:menuSoftFade 1.15s cubic-bezier(0.22,1,0.36,1) both;animation-delay:1.25s}
+          .menu-btn-stack > *{will-change:transform,opacity,filter;backface-visibility:hidden;animation:menuDropIn 0.85s cubic-bezier(0.19,1,0.22,1) both}
+          .menu-btn-stack > *:nth-child(1){animation-delay:1.75s}
+          .menu-btn-stack > *:nth-child(2){animation-delay:2.00s}
+          .menu-btn-stack > *:nth-child(3){animation-delay:2.25s}
+          .menu-btn-stack > *:nth-child(4){animation-delay:2.50s}
+        `}</style>
+
+        {/* Nebula clouds — deep space color haze */}
+        <div style={{
+          position: "absolute", inset: 0, pointerEvents: "none",
+          background: "radial-gradient(ellipse 40% 30% at 25% 30%, rgba(80,40,160,0.18), transparent 70%), radial-gradient(ellipse 35% 25% at 75% 60%, rgba(30,100,200,0.15), transparent 70%), radial-gradient(ellipse 30% 20% at 50% 80%, rgba(150,60,180,0.12), transparent 70%)",
+          animation: "menuNebula 18s ease-in-out infinite",
+        }} />
+
+        {/* Starfield — 3 parallax layers */}
+        <div style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "hidden" }}>
+          {menuStars.map(s => (
+            <div key={s.id} style={{
+              position: "absolute",
+              left: `${s.x}%`, top: `${s.y}%`,
+              width: s.size, height: s.size,
+              borderRadius: "50%",
+              background: s.layer === "near" ? "#fff" : s.layer === "mid" ? "#eaf2ff" : "#cfd8ec",
+              boxShadow: s.layer === "near"
+                ? `0 0 ${s.size * 4}px rgba(255,255,255,0.95), 0 0 ${s.size * 9}px rgba(140,180,255,0.5)`
+                : s.layer === "mid"
+                ? `0 0 ${s.size * 2.5}px rgba(220,235,255,0.75)`
+                : "none",
+              animation: `menuTwinkle ${s.twinkleDur}s ease-in-out ${s.twinkleDelay}s infinite`,
+            }} />
+          ))}
+        </div>
+
+        {/* Vignette */}
+        <div style={{
+          position: "absolute", inset: 0, pointerEvents: "none",
+          background: "radial-gradient(ellipse 100% 80% at 50% 50%, transparent 40%, rgba(0,0,0,0.55) 100%)",
+        }} />
+
         {devOpen && <CardCreator onClose={() => setDevOpen(false)} savedDecks={savedDecks} onSavedDecksChange={setSavedDecks} activeDeck={activeDeck} onSelectDeck={setActiveDeck} />}
-        <div style={{ fontSize: 11, color: "#EF9F27", fontWeight: 900, letterSpacing: 6, textTransform: "uppercase" }}>no cap gaming presents</div>
-        <div style={{ fontSize: 46, fontWeight: 900, color: "#fff", letterSpacing: 2, textAlign: "center", textShadow: "0 0 50px rgba(55,138,221,0.6), 0 0 100px rgba(127,119,221,0.3)", lineHeight: 1.1 }}>
-          CHRONICALLY<br /><span style={{ color: "#378ADD" }}>ONLINE</span>
+
+        {/* Cinematic veil — black curtain fades out on entry */}
+        <div className="menu-cinematic-veil" />
+
+        {/* Title block */}
+        <div className="menu-stagger" style={{ position: "relative", zIndex: 2, textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+          <div style={{
+            display: "inline-flex", alignItems: "center", gap: 10,
+            fontSize: 10, color: "#EF9F27", fontWeight: 900, letterSpacing: 8, textTransform: "uppercase",
+            padding: "4px 14px", border: "1px solid rgba(239,159,39,0.45)",
+            borderRadius: 999, background: "rgba(239,159,39,0.08)",
+          }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#EF9F27", boxShadow: "0 0 8px #EF9F27", animation: "menuPulse 1.6s ease-in-out infinite" }} />
+            No Cap Gaming Presents
+          </div>
+          <div style={{
+            fontSize: 72, fontWeight: 900, letterSpacing: 4, lineHeight: 0.95,
+            color: "#fff", marginTop: 6,
+            textShadow: "0 0 40px rgba(55,138,221,0.55), 0 0 90px rgba(127,119,221,0.35)",
+          }}>
+            CHRONICALLY
+          </div>
+          <div style={{
+            fontSize: 72, fontWeight: 900, letterSpacing: 4, lineHeight: 0.95,
+            background: "linear-gradient(90deg, #378ADD 0%, #85B7EB 30%, #7F77DD 55%, #378ADD 100%)",
+            backgroundSize: "200% auto",
+            WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
+            animation: "menuShimmer 5s linear infinite",
+          }}>
+            ONLINE
+          </div>
+          <div style={{ fontSize: 14, color: "#6a8ab0", textAlign: "center", maxWidth: 460, lineHeight: 1.6, marginTop: 12, fontStyle: "italic" }}>
+            Summon influencers. Cancel your enemies. Win the main character arc.
+          </div>
         </div>
-        <div style={{ fontSize: 15, color: "#445", textAlign: "center", maxWidth: 340, lineHeight: 1.6 }}>
-          The Gen Z card game. Summon influencers. Cancel your enemies. Win the main character arc.
-        </div>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "center" }}>
-          <button onMouseEnter={() => getSFX().hover()} onClick={() => { getSFX().buttonClick(); setPhase("hero_select"); }} style={{ background: "linear-gradient(135deg,#1a4a8a,#378ADD)", color: "#fff", border: "none", borderRadius: 10, padding: "14px 40px", fontSize: 16, fontWeight: 900, cursor: "pointer", boxShadow: "0 0 24px rgba(55,138,221,0.5)", letterSpacing: 1 }}>PLAY vs AI</button>
-          <button onMouseEnter={() => getSFX().hover()} onClick={() => { getSFX().buttonClick(); setDevOpen(true); }} style={{ background: "transparent", color: "#FAC775", border: "2px solid #FAC775", borderRadius: 10, padding: "14px 24px", fontSize: 16, fontWeight: 900, cursor: "pointer" }}>Card Forge ✨</button>
-        </div>
+
+        {/* Menu buttons — 4-row column. Row 2 splits into Multiplayer + Deck Builder. */}
+        {(() => {
+          const ROW_W = 560;
+          const ROW_H = 82;
+          const HALF_GAP = 18;
+          const HALF_W = (ROW_W - HALF_GAP) / 2;
+
+          const MenuButton = ({ onClick, disabled, theme, label, sublabel, width = ROW_W, accent }) => {
+            const [hov, setHov] = useState(false);
+            return (
+            <motion.button
+              whileHover={disabled ? {} : { y: -3, scale: 1.012 }}
+              whileTap={disabled ? {} : { scale: 0.985 }}
+              onMouseEnter={() => { if (!disabled) { getSFX().plick(); setHov(true); } }}
+              onMouseLeave={() => setHov(false)}
+              onClick={onClick}
+              disabled={disabled}
+              style={{
+                position: "relative",
+                width, height: ROW_H,
+                cursor: disabled ? "not-allowed" : "pointer",
+                border: "none", textAlign: "left",
+                background: disabled
+                  ? "linear-gradient(140deg, rgba(26,40,66,0.55) 0%, rgba(10,18,32,0.9) 100%)"
+                  : `linear-gradient(140deg, ${theme.bgStart} 0%, ${theme.bgMid} 55%, ${theme.bgEnd} 120%)`,
+                borderRadius: 14,
+                padding: "0 22px",
+                boxShadow: disabled
+                  ? "inset 0 0 0 1px rgba(106,138,176,0.25), 0 8px 24px rgba(0,0,0,0.5)"
+                  : hov
+                    ? `0 0 0 1px ${theme.ring}, 0 0 48px ${theme.glow}, 0 0 96px ${theme.glow}, 0 12px 34px rgba(0,0,0,0.55)`
+                    : `0 0 0 1px rgba(106,138,176,0.35), 0 8px 24px rgba(0,0,0,0.5)`,
+                overflow: "hidden",
+                opacity: disabled ? 0.72 : 1,
+                transition: "box-shadow 0.25s",
+              }}
+            >
+              {!disabled && hov && (
+                <div style={{
+                  position: "absolute", inset: 0,
+                  background: `linear-gradient(100deg, transparent 30%, ${theme.shimmer} 48%, ${theme.shimmerBright} 50%, ${theme.shimmer} 52%, transparent 70%)`,
+                  backgroundSize: "200% 100%",
+                  animation: "menuShimmer 4.2s linear infinite",
+                  pointerEvents: "none", mixBlendMode: "screen",
+                }} />
+              )}
+              <div style={{ position: "absolute", top: 8, left: 8, width: 10, height: 10, borderTop: `1.5px solid ${theme.bracket}`, borderLeft: `1.5px solid ${theme.bracket}` }} />
+              <div style={{ position: "absolute", top: 8, right: 8, width: 10, height: 10, borderTop: `1.5px solid ${theme.bracket}`, borderRight: `1.5px solid ${theme.bracket}` }} />
+              <div style={{ position: "absolute", bottom: 8, left: 8, width: 10, height: 10, borderBottom: `1.5px solid ${theme.bracket}`, borderLeft: `1.5px solid ${theme.bracket}` }} />
+              <div style={{ position: "absolute", bottom: 8, right: 8, width: 10, height: 10, borderBottom: `1.5px solid ${theme.bracket}`, borderRight: `1.5px solid ${theme.bracket}` }} />
+
+              <div style={{ position: "relative", zIndex: 2, height: "100%", display: "flex", flexDirection: "column", justifyContent: "center", gap: 2 }}>
+                <div style={{ fontSize: 9, fontWeight: 900, letterSpacing: 2.6, color: theme.tag, textTransform: "uppercase" }}>
+                  {accent}
+                </div>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+                  <div style={{ fontSize: 24, fontWeight: 900, color: "#fff", letterSpacing: 1.6, textShadow: hov && !disabled ? `0 0 18px ${theme.glow}` : "none", transition: "text-shadow 0.25s" }}>
+                    {label}
+                  </div>
+                  {sublabel && (
+                    <div style={{ fontSize: 11, color: theme.sub, letterSpacing: 0.6 }}>
+                      {sublabel}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.button>
+          );
+          };
+
+          const playTheme = {
+            bgStart: "rgba(55,138,221,0.4)", bgMid: "rgba(26,74,138,0.9)", bgEnd: "#04080f",
+            ring: "rgba(55,138,221,0.7)", glow: "rgba(55,138,221,0.5)",
+            shimmer: "rgba(255,255,255,0.12)", shimmerBright: "rgba(255,255,255,0.28)",
+            bracket: "#85B7EB", tag: "#85B7EB", sub: "#aac6e8",
+          };
+          const mpTheme = {
+            bgStart: "rgba(60,90,140,0.35)", bgMid: "rgba(24,44,74,0.9)", bgEnd: "#04080f",
+            ring: "rgba(106,138,176,0.45)", glow: "rgba(106,138,176,0.25)",
+            shimmer: "rgba(255,255,255,0.06)", shimmerBright: "rgba(255,255,255,0.14)",
+            bracket: "#6a8ab0", tag: "#8aa6c8", sub: "#7b93b4",
+          };
+          const deckTheme = {
+            bgStart: "rgba(239,159,39,0.38)", bgMid: "rgba(122,72,16,0.9)", bgEnd: "#0f0a04",
+            ring: "rgba(250,199,117,0.65)", glow: "rgba(250,199,117,0.5)",
+            shimmer: "rgba(250,199,117,0.18)", shimmerBright: "rgba(250,199,117,0.38)",
+            bracket: "#FAC775", tag: "#FAC775", sub: "#e8cfa3",
+          };
+          const settingsTheme = {
+            bgStart: "rgba(127,119,221,0.3)", bgMid: "rgba(54,44,110,0.9)", bgEnd: "#04060f",
+            ring: "rgba(160,150,230,0.55)", glow: "rgba(127,119,221,0.4)",
+            shimmer: "rgba(180,170,255,0.1)", shimmerBright: "rgba(180,170,255,0.24)",
+            bracket: "#b0a8ee", tag: "#b0a8ee", sub: "#a9a2d8",
+          };
+          const exitTheme = {
+            bgStart: "rgba(180,60,60,0.3)", bgMid: "rgba(70,20,20,0.9)", bgEnd: "#0a0406",
+            ring: "rgba(220,110,110,0.55)", glow: "rgba(200,70,70,0.4)",
+            shimmer: "rgba(255,180,180,0.1)", shimmerBright: "rgba(255,200,200,0.22)",
+            bracket: "#e48a8a", tag: "#e48a8a", sub: "#c99a9a",
+          };
+
+          return (
+            <div className="menu-btn-stack" style={{ position: "relative", zIndex: 2, display: "flex", flexDirection: "column", gap: 14, alignItems: "center", marginTop: 4 }}>
+              <MenuButton
+                onClick={goToHeroSelectWithFade}
+                theme={playTheme}
+                accent="▶ Primary Mode"
+                label="PLAY"
+                sublabel="1v1 vs AI"
+              />
+              <div style={{ display: "flex", gap: HALF_GAP, width: ROW_W }}>
+                <MenuButton
+                  onClick={() => toast("Multiplayer — coming later fr 🔒")}
+                  disabled
+                  width={HALF_W}
+                  theme={mpTheme}
+                  accent="Locked · Soon™"
+                  label="MULTIPLAYER"
+                />
+                <MenuButton
+                  onClick={() => { getSFX().buttonClick(); setDevOpen(true); }}
+                  width={HALF_W}
+                  theme={deckTheme}
+                  accent="✦ Forge"
+                  label="DECK BUILDER"
+                />
+              </div>
+              <MenuButton
+                onClick={() => { getSFX().buttonClick(); setPhase("settings"); }}
+                theme={settingsTheme}
+                accent="⚙ Preferences"
+                label="SETTINGS"
+              />
+              <MenuButton
+                onClick={() => { getSFX().buttonClick(); setPhase("exit_screen"); }}
+                theme={exitTheme}
+                accent="✕ Leave"
+                label="EXIT"
+              />
+            </div>
+          );
+        })()}
+
         {activeDeck && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, background: "rgba(55,138,221,0.08)", border: "1px solid rgba(55,138,221,0.25)", borderRadius: 8, padding: "8px 14px" }}>
-            <div style={{ fontSize: 10, color: "#378ADD", fontWeight: 900, letterSpacing: 1 }}>DECK</div>
+          <div className="menu-soft-fade" style={{ position: "relative", zIndex: 2, display: "flex", alignItems: "center", gap: 8, background: "rgba(55,138,221,0.08)", border: "1px solid rgba(55,138,221,0.25)", borderRadius: 8, padding: "8px 14px", animationDelay: "2.45s" }}>
+            <div style={{ fontSize: 10, color: "#378ADD", fontWeight: 900, letterSpacing: 1 }}>ACTIVE DECK</div>
             <div style={{ fontSize: 12, color: "#85B7EB", fontWeight: 700 }}>{activeDeck.name}</div>
             <div style={{ fontSize: 10, color: "#334" }}>· {activeDeck.cardIds.length} cards</div>
             <button onClick={() => setActiveDeck(null)} style={{ marginLeft: 4, background: "transparent", border: "none", color: "#334", cursor: "pointer", fontSize: 11 }}>✕</button>
           </div>
         )}
-        <div style={{ fontSize: 10, color: "#1a2030" }}>{getLib().length} cards in pool</div>
+
+        <div className="menu-soft-fade" style={{ position: "relative", zIndex: 2, fontSize: 10, color: "#1a2030", letterSpacing: 1, animationDelay: "2.75s" }}>
+          {getLib().length} cards in pool · v0.1
+        </div>
+
+        {matchFadeActive && (
+          <div style={{ position: "fixed", inset: 0, background: "#000", opacity: matchFadeOpaque ? 1 : 0, transition: "opacity 820ms ease", zIndex: 1200, pointerEvents: "none" }} />
+        )}
+        <AudioControls />
       </div>
+    );
+  }
+
+  if (phase === "settings" || phase === "exit_screen") {
+    const isExit = phase === "exit_screen";
+    const title = isExit ? "EXIT" : "SETTINGS";
+    const accent = isExit ? "#e48a8a" : "#b0a8ee";
+    const glow = isExit ? "rgba(200,70,70,0.45)" : "rgba(127,119,221,0.45)";
+    return (
+      <div style={{
+        minHeight: "100vh", width: "100%",
+        background: "radial-gradient(ellipse 120% 70% at 50% 20%, rgba(30,60,120,0.32), transparent 60%), linear-gradient(180deg, #02050d 0%, #000208 100%)",
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+        gap: 24, padding: 40, position: "relative", overflow: "hidden", fontFamily: "system-ui, sans-serif",
+      }}>
+        <style>{`@keyframes menuTwinkle{0%,100%{opacity:0.25;transform:scale(1)}50%{opacity:1;transform:scale(1.15)}}`}</style>
+        <div style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "hidden" }}>
+          {menuStars.map(s => (
+            <div key={s.id} style={{
+              position: "absolute", left: `${s.x}%`, top: `${s.y}%`,
+              width: s.size, height: s.size, borderRadius: "50%",
+              background: s.layer === "near" ? "#fff" : s.layer === "mid" ? "#eaf2ff" : "#cfd8ec",
+              boxShadow: s.layer === "near"
+                ? `0 0 ${s.size * 4}px rgba(255,255,255,0.95), 0 0 ${s.size * 9}px rgba(140,180,255,0.5)`
+                : s.layer === "mid" ? `0 0 ${s.size * 2.5}px rgba(220,235,255,0.75)` : "none",
+              animation: `menuTwinkle ${s.twinkleDur}s ease-in-out ${s.twinkleDelay}s infinite`,
+            }} />
+          ))}
+        </div>
+        <div style={{ position: "relative", zIndex: 2, fontSize: 56, fontWeight: 900, letterSpacing: 6, color: "#fff", textShadow: `0 0 40px ${glow}` }}>
+          {title}
+        </div>
+        <div style={{ position: "relative", zIndex: 2, fontSize: 12, color: accent, letterSpacing: 3, textTransform: "uppercase" }}>
+          Nothing here yet · Coming soon
+        </div>
+        <button
+          onMouseEnter={() => getSFX().plick()}
+          onClick={() => { getSFX().buttonClick(); setPhase("menu"); }}
+          style={{
+            position: "relative", zIndex: 2, marginTop: 20,
+            background: "transparent", border: `1px solid ${accent}`, color: accent,
+            borderRadius: 999, padding: "10px 28px", fontSize: 12, fontWeight: 900,
+            cursor: "pointer", letterSpacing: 1.4, textTransform: "uppercase",
+          }}
+        >
+          ← Back to Menu
+        </button>
+        <AudioControls />
+      </div>
+    );
+  }
+
+  if (phase === "vs_reveal" && gs) {
+    const playerHero = HEROES.find(h => h.id === gs.player.heroId) || null;
+    const aiHero = HEROES.find(h => h.id === gs.ai.heroId) || null;
+    return (
+      <>
+        <VsRouletteScreen
+          playerHero={playerHero}
+          aiHero={aiHero}
+          onDone={() => setPhase(nextPhaseAfterReveal)}
+        />
+        <AudioControls />
+      </>
     );
   }
 
@@ -1480,6 +1832,7 @@ export default function App() {
            Top→Bottom: enemy-hand → enemy-hero → enemy-board → player-board → player-hero → player-hand
       ══════════════════════════════════════════════════════════════════ */}
       {(() => {
+        if (phase === "rules" || phase === "mulligan") return null;
         const playerSize = computeBoardCardSize(gs?.player?.board?.length || 0, playerBoardW);
         const enemySize  = computeBoardCardSize(gs?.ai?.board?.length || 0, enemyBoardW);
         const showBreathing = visualCfg.cardIdleBreathing !== false;
@@ -2259,6 +2612,7 @@ export default function App() {
           </div>
         </div>
       </div>
+      <AudioControls />
     </LayoutGroup>
   );
 }

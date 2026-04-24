@@ -2,6 +2,37 @@ import { Howl } from "howler";
 
 const sampleRate = 44100;
 
+// ── File-backed SFX (user drops files into public/assets/sfx/) ─────────────────
+// Exts probed in order; first hit wins. Missing files = silent, no errors.
+const SFX_BASE = (import.meta.env.BASE_URL || "/") + "assets/sfx/";
+const FILE_EXTS = ["mp3", "ogg", "wav"];
+const fileCache = new Map();   // name → resolved src string | null
+
+async function probeFile(name) {
+  if (fileCache.has(name)) return fileCache.get(name);
+  for (const ext of FILE_EXTS) {
+    const src = `${SFX_BASE}${name}.${ext}`.replace(/\/+/g, "/");
+    try {
+      const res = await fetch(src, { method: "HEAD" });
+      if (res.ok) { fileCache.set(name, src); return src; }
+    } catch {}
+  }
+  fileCache.set(name, null);
+  return null;
+}
+
+// Play a file by name; if file missing, run the fallback synth.
+function playFileOr(name, volume, fallback) {
+  probeFile(name).then((src) => {
+    if (!src) { fallback?.(); return; }
+    try {
+      const a = new Audio(src);
+      a.volume = volume;
+      a.play().catch(() => fallback?.());
+    } catch { fallback?.(); }
+  });
+}
+
 function buildWav(samples) {
   const buffer = new ArrayBuffer(44 + samples.length * 2);
   const view = new DataView(buffer);
@@ -181,6 +212,44 @@ function createSoundEngine() {
         toneSound(2200, 0.1, 0.12);
         noiseSound(0.1);
       }, 340);
+    },
+    // Crisp UI "plick" hover — short click blip. File-first, synth fallback.
+    plick() {
+      if (!hoverThrottle(45)) return;
+      playFileOr("plick", 0.55, () => {
+        toneSound(2400, 0.018, 0.06);
+        toneSound(1600, 0.014, 0.045);
+      });
+    },
+    // Big "BLAM" for Play button press. Loud impact.
+    blam() {
+      playFileOr("blam", 0.75, () => {
+        noiseSound(0.4);
+        toneSound(70, 0.18, 0.45);
+        toneSound(120, 0.14, 0.35);
+        setTimeout(() => {
+          toneSound(240, 0.12, 0.25);
+          toneSound(360, 0.1, 0.18);
+        }, 50);
+      });
+    },
+    // Extra-thicc "BLAMMM" for hero selection — more resonance.
+    blammm() {
+      playFileOr("blammm", 0.85, () => {
+        noiseSound(0.55);
+        toneSound(55, 0.3, 0.5);
+        toneSound(90, 0.26, 0.4);
+        toneSound(150, 0.22, 0.3);
+        setTimeout(() => {
+          toneSound(300, 0.18, 0.25);
+          toneSound(520, 0.15, 0.2);
+          toneSound(780, 0.12, 0.15);
+        }, 80);
+        setTimeout(() => {
+          toneSound(1100, 0.1, 0.12);
+          toneSound(1800, 0.08, 0.1);
+        }, 180);
+      });
     },
     ultimateReady() {
       // Low weight thud under chime

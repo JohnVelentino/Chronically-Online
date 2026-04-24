@@ -36,6 +36,18 @@ function getEnemySide(side) {
   return side === "player" ? "ai" : "player";
 }
 
+// After a discounted card is played, restore original costs on remaining hand cards
+// and clear the flag. Called from play-card paths (spell, minion, both sides).
+export function consumeAlgoTweak(gs, side) {
+  if (!gs?.[side]?.algoTweakActive) return gs;
+  const restoredHand = gs[side].hand.map(c => {
+    if (!c._algoDiscounted) return c;
+    const { _algoDiscounted, _algoOrigCost, ...rest } = c;
+    return { ...rest, cost: _algoOrigCost ?? c.cost };
+  });
+  return { ...gs, [side]: { ...gs[side], hand: restoredHand, algoTweakActive: false } };
+}
+
 function asAtk(value) {
   return Number.isFinite(value) ? value : 0;
 }
@@ -1160,8 +1172,15 @@ export function applySpell(effect, targetId, gs, side, sourceCard = null) {
       remaining = d2 ? remaining.filter(c => c.uid !== d2.uid) : remaining;
       gs = { ...gs, [enemy]: { ...gs[enemy], hand: remaining } };
     }
-    gs = { ...gs, [side]: { ...gs[side], pendingNextCardDiscount: (gs[side].pendingNextCardDiscount || 0) + 2 } };
-    log.push("Enemy discarded 2. Next card -2 cost.");
+    // Apply -2 cost to every card currently in caster's hand (but not the played algo_tweak — already removed).
+    // First card played consumes the effect: on play, remaining discounted cards are restored.
+    const discountedHand = gs[side].hand.map(c => {
+      if (c._algoDiscounted) return c;
+      const orig = c.cost || 0;
+      return { ...c, _algoOrigCost: orig, cost: Math.max(0, orig - 2), _algoDiscounted: true };
+    });
+    gs = { ...gs, [side]: { ...gs[side], hand: discountedHand, algoTweakActive: true } };
+    log.push("Enemy discarded 2. Your hand -2 cost (next card played consumes).");
   } else if (effect === "grant_dshield_stealth") {
     if (targetId) {
       ["player", "ai"].forEach(s => {
