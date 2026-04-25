@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { RC } from "../data/cards.js";
 import SummonRune from "./SummonRune.jsx";
@@ -33,6 +33,9 @@ function BoardMinionImpl({
   cardW = 100,
   cardH = 133,
   showBreathing = true,
+  showReadyIndicator = false,
+  attackDx = 0,
+  attackDy = 0,
 }) {
   const [hov, setHov] = useState(false);
   const [flash, setFlash] = useState(true);
@@ -49,6 +52,7 @@ function BoardMinionImpl({
   const hasDivineShield = minion.keywords?.includes("divine_shield");
   const hasCharge       = minion.keywords?.includes("charge");
   const canAct = !minion.summoningSick && minion.canAttack !== false && minion.atk > 0;
+  const alreadyAttacked = !minion.summoningSick && minion.canAttack === false && minion.atk > 0;
   const isDamaged = minion.hp < (minion.maxHp ?? minion.hp);
 
   // Extra keyword badges (skip taunt/divine_shield — shown via rings)
@@ -95,13 +99,23 @@ function BoardMinionImpl({
   const entryArc = flash ? { y: [-80, 18, translateY], scale: [0.5, 1.15, scaleTarget], opacity: [0, 1, 1] } : null;
   const regularAnim = { y: translateY, scale: scaleTarget, opacity: 1 };
   const LUNGE = 38;
-  const attackAnim = isAttacking ? { y: attackUp ? [0, -LUNGE, 0] : [0, LUNGE, 0] } : {};
+  const hasFlight = isAttacking && (Math.abs(attackDx) + Math.abs(attackDy)) > 4;
+  // Hearthstone-style: fly ~82% of the way to target, bash, return. Slight overshoot on arrival.
+  const flightX = attackDx * 0.82;
+  const flightY = attackDy * 0.82;
+  const attackAnim = hasFlight
+    ? { x: [0, flightX, 0], y: [0, flightY, 0] }
+    : isAttacking
+      ? { y: attackUp ? [0, -LUNGE, 0] : [0, LUNGE, 0] }
+      : {};
 
   return (
     <>
       <style>{`
         @keyframes boardBreathe { 0%,100% { transform: scale(1); } 50% { transform: scale(1.025); } }
         @keyframes divineShimmer { 0%,100% { opacity:0.55; } 50% { opacity:1; } }
+        @keyframes readyRingPulse { 0%,100% { box-shadow: 0 0 14px rgba(70,230,130,0.75), 0 0 30px rgba(70,230,130,0.45); opacity: 0.95; } 50% { box-shadow: 0 0 26px rgba(120,255,170,1), 0 0 56px rgba(70,230,130,0.8); opacity: 1; } }
+        @keyframes spentRingPulse { 0%,100% { box-shadow: 0 0 8px rgba(220,60,60,0.55); opacity: 0.75; } 50% { box-shadow: 0 0 14px rgba(255,90,90,0.8); opacity: 0.9; } }
       `}</style>
       <motion.div
         ref={(el) => {
@@ -118,11 +132,16 @@ function BoardMinionImpl({
         animate={{ ...(entryArc ?? regularAnim), ...attackAnim }}
         exit={{ opacity: 0, scale: 0, rotate: 15, filter: "blur(8px)", transition: { duration: 0.4 } }}
         transition={{
-          y: isAttacking
-            ? { duration: 0.35, times: [0, 0.28, 1], ease: ["easeIn", "easeOut"] }
-            : entryArc
-              ? { type: "spring", stiffness: 280, damping: 22 }
-              : { type: "spring", stiffness: 260, damping: 22 },
+          x: hasFlight
+            ? { duration: 0.5, times: [0, 0.42, 1], ease: ["easeIn", "easeOut"] }
+            : { type: "spring", stiffness: 260, damping: 22 },
+          y: hasFlight
+            ? { duration: 0.5, times: [0, 0.42, 1], ease: ["easeIn", "easeOut"] }
+            : isAttacking
+              ? { duration: 0.35, times: [0, 0.28, 1], ease: ["easeIn", "easeOut"] }
+              : entryArc
+                ? { type: "spring", stiffness: 280, damping: 22 }
+                : { type: "spring", stiffness: 260, damping: 22 },
           scale: entryArc ? { type: "spring", stiffness: 320, damping: 26 } : { type: "spring", stiffness: 260, damping: 22 },
           opacity: entryArc ? { duration: 0.35 } : { duration: 0.2 },
         }}
@@ -142,6 +161,7 @@ function BoardMinionImpl({
           boxSizing: "border-box",
           overflow: "visible",
           willChange: "transform",
+          zIndex: isAttacking ? 50 : undefined,
         }}
       >
         {/* ── Keyword badges row (above circle) ─────────────── */}
@@ -214,6 +234,24 @@ function BoardMinionImpl({
               border: "2px solid rgba(200,230,255,0.9)",
               boxShadow: "0 0 20px rgba(180,220,255,0.8), 0 0 40px rgba(120,180,255,0.4)",
               animation: "divineShimmer 1.6s ease-in-out infinite",
+              pointerEvents: "none", zIndex: 0,
+            }} />
+          )}
+
+          {/* Ready / Spent ring — only for player-side minions during your turn */}
+          {showReadyIndicator && canAct && !isAttacking && !isDefending && (
+            <div style={{
+              position: "absolute", inset: -10, borderRadius: "50%",
+              border: "3px solid rgba(90,240,140,0.95)",
+              animation: "readyRingPulse 1.6s ease-in-out infinite",
+              pointerEvents: "none", zIndex: 0,
+            }} />
+          )}
+          {showReadyIndicator && alreadyAttacked && !isAttacking && !isDefending && (
+            <div style={{
+              position: "absolute", inset: -8, borderRadius: "50%",
+              border: "2.5px solid rgba(220,60,60,0.9)",
+              animation: "spentRingPulse 1.8s ease-in-out infinite",
               pointerEvents: "none", zIndex: 0,
             }} />
           )}
@@ -320,4 +358,7 @@ function BoardMinionImpl({
   );
 }
 
-export default BoardMinionImpl;
+// Shallow-prop memoization. The minion entity object is reference-stable while
+// untouched (engine returns new objects only on mutation), and primitive flags
+// guard hover/attack/etc. Cuts board re-renders during unrelated state churn.
+export default memo(BoardMinionImpl);

@@ -1,8 +1,8 @@
 // 1.7x bigger portrait (88→150px), "AP" → "Aura Points"
-import { useState, useEffect, useRef } from "react";
+import { memo, useState, useEffect, useRef } from "react";
 import { getSFX } from "../audio/sfx.js";
 
-export default function HeroPortrait({ name, hp, maxHp, emoji, portrait, isAI, isTarget, onClick, mana, maxMana, armor = 0, ultimateInfo = null, onUltimateClick, heroRef, showName = true, size = 160 }) {
+function HeroPortraitImpl({ name, hp, maxHp, emoji, portrait, isAI, isTarget, onClick, mana, maxMana, armor = 0, ultimateInfo = null, onUltimateClick, heroRef, showName = true, size = 160 }) {
   const [flashing, setFlashing] = useState(false);
   const [portraitFailed, setPortraitFailed] = useState(false);
   const prevHp = useRef(hp);
@@ -213,3 +213,5 @@ export default function HeroPortrait({ name, hp, maxHp, emoji, portrait, isAI, i
     </div>
   );
 }
+
+export default memo(HeroPortraitImpl);

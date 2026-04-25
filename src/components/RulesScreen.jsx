@@ -1,8 +1,9 @@
 import React, { useState } from "react";
 import { motion } from "framer-motion";
+import { getSFX } from "../audio/sfx.js";
 
 const RULES = [
-  "Summon and attack with minions to destroy enemy hero and his stuff.",
+  "Summon Minions and Attack to Destroy the Enemy and his minions. (Minions Need to wait 1 turn before attacking, to get ready.)",
   "Cards cost AURA. You gain +1 Max Aura per turn, up to 10.",
   "Use Spells Wisely.",
   "Each Hero has 2 Charges of a CRAZYY OP Ultimate, available at 5 Aura and 10 Aura.",
@@ -12,6 +13,7 @@ export default function RulesScreen({ onContinue }) {
   const [dontShow, setDontShow] = useState(false);
 
   const go = () => {
+    try { getSFX().blam(); } catch (_) {}
     if (dontShow) {
       try { localStorage.setItem("co_rules_seen_v1", "1"); } catch (_) { /* ignore */ }
     }

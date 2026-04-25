@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import { RC } from "../data/cards.js";
 import useDevConfig from "../dev/useDevConfig.js";
 import TypeBadge from "./TypeBadge.jsx";
@@ -220,7 +220,7 @@ function SpellOrb({ emoji, size = 64 }) {
 }
 
 // ── Main component ─────────────────────────────────────────────────────────────
-export default function TemplateCardFace({ card, width, height, onFrameError }) {
+function TemplateCardFaceImpl({ card, width, height, onFrameError }) {
   const [artFailed, setArtFailed] = useState(false);
   const devConfig = useDevConfig();
   const cardTemplate = devConfig?.cardTemplate || {};
@@ -697,3 +697,5 @@ export default function TemplateCardFace({ card, width, height, onFrameError }) 
     </div>
   );
 }
+
+export default memo(TemplateCardFaceImpl);

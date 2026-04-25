@@ -1,4 +1,4 @@
-import React from "react";
+import { memo } from "react";
 
 const STYLES = {
   spell: {
@@ -17,7 +17,7 @@ const STYLES = {
   },
 };
 
-export default function TypeBadge({ type = "minion", scale = 1 }) {
+function TypeBadgeImpl({ type = "minion", scale = 1 }) {
   const s = STYLES[type] || STYLES.minion;
   const fontSize = Math.max(6.5, 7.5 * scale);
   return (
@@ -49,3 +49,5 @@ export default function TypeBadge({ type = "minion", scale = 1 }) {
     </div>
   );
 }
+
+export default memo(TypeBadgeImpl);

@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 
-export default function CardBack({ size = 92, imagePath = "" }) {
+function CardBackImpl({ size = 92, imagePath = "" }) {
   const [imgFailed, setImgFailed] = useState(false);
   const showImage = !!imagePath && !imgFailed;
 
@@ -120,3 +120,5 @@ export default function CardBack({ size = 92, imagePath = "" }) {
     </div>
   );
 }
+
+export default memo(CardBackImpl);

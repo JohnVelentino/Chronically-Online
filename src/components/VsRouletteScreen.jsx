@@ -174,21 +174,21 @@ export default function VsRouletteScreen({ playerHero, aiHero, onDone }) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.3 }}
-            style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}
+            style={{ position: "absolute", inset: 0 }}
           >
-            {/* Player side */}
+            {/* Player side — top-center above VS */}
             <motion.div
-              initial={{ x: "-120%", opacity: 0, rotate: -4 }}
-              animate={{ x: "-16%", opacity: 1, rotate: 0 }}
+              initial={{ y: -600, opacity: 0, rotate: -4 }}
+              animate={{ y: 0, opacity: 1, rotate: 0 }}
               transition={{ duration: 0.55, ease: [0.2, 0.9, 0.35, 1] }}
               style={{
-                position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)",
-                display: "flex", flexDirection: "column", alignItems: "center", gap: 16,
+                position: "absolute", top: "4%", left: "50%", transform: "translateX(-50%)",
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 10,
                 color: pColor,
               }}
             >
               <div style={{
-                width: 300, height: 300, borderRadius: 22, overflow: "hidden",
+                width: 220, height: 220, borderRadius: 22, overflow: "hidden",
                 border: `3px solid ${pColor}`,
                 boxShadow: `0 0 60px ${pColor}, 0 0 160px ${pColor}55, inset 0 0 30px rgba(0,0,0,0.7)`,
                 background: `radial-gradient(circle, ${pColor}33, #020608)`,
@@ -203,19 +203,19 @@ export default function VsRouletteScreen({ playerHero, aiHero, onDone }) {
               </div>
             </motion.div>
 
-            {/* AI side */}
+            {/* AI side — bottom-center below VS */}
             <motion.div
-              initial={{ x: "120%", opacity: 0, rotate: 4 }}
-              animate={{ x: "16%", opacity: 1, rotate: 0 }}
+              initial={{ y: 600, opacity: 0, rotate: 4 }}
+              animate={{ y: 0, opacity: 1, rotate: 0 }}
               transition={{ duration: 0.55, ease: [0.2, 0.9, 0.35, 1] }}
               style={{
-                position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)",
-                display: "flex", flexDirection: "column", alignItems: "center", gap: 16,
+                position: "absolute", bottom: "4%", left: "50%", transform: "translateX(-50%)",
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 10,
                 color: aColor,
               }}
             >
               <div style={{
-                width: 300, height: 300, borderRadius: 22, overflow: "hidden",
+                width: 220, height: 220, borderRadius: 22, overflow: "hidden",
                 border: `3px solid ${aColor}`,
                 boxShadow: `0 0 60px ${aColor}, 0 0 160px ${aColor}55, inset 0 0 30px rgba(0,0,0,0.7)`,
                 background: `radial-gradient(circle, ${aColor}33, #020608)`,
@@ -236,7 +236,7 @@ export default function VsRouletteScreen({ playerHero, aiHero, onDone }) {
               animate={{ scale: 1, opacity: 1, rotate: 0 }}
               transition={{ duration: 0.45, delay: 0.25, type: "spring", stiffness: 240, damping: 14 }}
               style={{
-                position: "relative", zIndex: 5,
+                position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)", zIndex: 5,
                 fontSize: 160, fontWeight: 900,
                 letterSpacing: 2,
                 fontFamily: "'Cinzel','Trajan Pro', serif",

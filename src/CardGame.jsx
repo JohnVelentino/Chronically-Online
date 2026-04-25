@@ -4,7 +4,7 @@ import { getLib, RC, HEROES, getHeroDeckIds } from "./data/cards.js";
 import { getSFX } from "./audio/sfx.js";
 import { bgMusic } from "./audio/bgMusic.js";
 import { drawCard, initPlayer, makeDeckFrom, mkUid, mulliganHand } from "./engine/gameState.js";
-import { applySpell, applyZuckUltimate, consumeAlgoTweak, doAttack, playBattlecry, createMinionEntity, damageHero, destroyAllMinions, resolveEndOfTurn, revealHand, silenceMinion, startTurn, stealCardFromHandByUid, takeControlOfMinion } from "./engine/combat.js";
+import { applySpell, applyZuckUltimate, consumeAlgoTweak, doAttack, playBattlecry, createMinionEntity, damageHero, destroyAllMinions, resolveDiscover, resolveEndOfTurn, revealHand, silenceMinion, startTurn, stealCardFromHandByUid, takeControlOfMinion } from "./engine/combat.js";
 import { runAiTurnSteps } from "./engine/ai.js";
 import ArrowOverlay from "./components/ArrowOverlay.jsx";
 import BoardMinion from "./components/BoardMinion.jsx";
@@ -19,8 +19,10 @@ import CardBack from "./components/CardBack.jsx";
 import HeroSelect from "./components/HeroSelect.jsx";
 import AudioControls from "./components/AudioControls.jsx";
 import VsRouletteScreen from "./components/VsRouletteScreen.jsx";
+import TurnBanner from "./components/TurnBanner.jsx";
 import TemplateCardFace from "./components/TemplateCardFace.jsx";
 import UltimateTooltip from "./components/UltimateTooltip.jsx";
+import NukeBlastFX from "./components/NukeBlastFX.jsx";
 import useDevConfig from "./dev/useDevConfig.js";
 
 const CANVAS_W = 1600;
@@ -126,13 +128,18 @@ export default function App() {
   const [deckPulse, setDeckPulse] = useState(false);
   const [pendingDrawCard, setPendingDrawCard] = useState(null);
   const [summonRunes, setSummonRunes] = useState([]);
+  const [turnBanner, setTurnBanner] = useState(null); // { key, maxManaGain }
+  const prevPlayerMaxManaRef = useRef(0);
+  const prevPhaseRef = useRef(null);
   const [matchFadeActive, setMatchFadeActive] = useState(false);
   const [matchFadeOpaque, setMatchFadeOpaque] = useState(false);
   const [nextPhaseAfterReveal, setNextPhaseAfterReveal] = useState("player_turn");
   const [isOverPlayZone, setIsOverPlayZone] = useState(false);
   const [ciaUltSelection, setCiaUltSelection] = useState(null);
   const [tateDiscoverChoice, setTateDiscoverChoice] = useState(null);
+  const [discoverChoice, setDiscoverChoice] = useState(null); // { cards, action, sourceLabel }
   const [ultBurstKey, setUltBurstKey] = useState(null);
+  const [nukeFxActive, setNukeFxActive] = useState(false);
   const prevUltCanUseRef = useRef(false);
   const devConfig = useDevConfig();
   const prevBoardUids = useRef({ player: [], ai: [] });
@@ -256,6 +263,21 @@ export default function App() {
     };
   }, [phase]);
 
+  useEffect(() => {
+    const curMax = gs?.player?.maxMana || 0;
+    const prevPhase = prevPhaseRef.current;
+    if (phase === "player_turn" && prevPhase !== "player_turn") {
+      const gain = Math.max(0, curMax - prevPlayerMaxManaRef.current);
+      setTurnBanner({ key: Date.now(), maxManaGain: gain });
+      const t = setTimeout(() => setTurnBanner(null), 1700);
+      prevPlayerMaxManaRef.current = curMax;
+      prevPhaseRef.current = phase;
+      return () => clearTimeout(t);
+    }
+    prevPhaseRef.current = phase;
+    if (phase !== "player_turn") prevPlayerMaxManaRef.current = curMax;
+  }, [phase, gs?.player?.maxMana]);
+
   function getRefById(id) {
     if (!id) return null;
     if (id === "hero_player") return playerHeroRef;
@@ -284,7 +306,21 @@ export default function App() {
 
   function triggerAttackVisual(attacker, defender, amount) {
     const key = Date.now();
-    setAttackVisual({ attacker, defender, key });
+    // Compute flight delta from attacker center → defender center
+    let dx = 0, dy = 0;
+    try {
+      const aRef = getRefById(attacker);
+      const dRef = getRefById(defender);
+      const aEl = aRef?.current;
+      const dEl = dRef?.current;
+      if (aEl && dEl) {
+        const a = aEl.getBoundingClientRect();
+        const d = dEl.getBoundingClientRect();
+        dx = (d.left + d.width / 2) - (a.left + a.width / 2);
+        dy = (d.top + d.height / 2) - (a.top + a.height / 2);
+      }
+    } catch { /* ignore */ }
+    setAttackVisual({ attacker, defender, key, dx, dy });
     spawnDamageNumber(defender, amount, "damage");
     setHitStop(true);
     setTimeout(() => setHitStop(false), 80);
@@ -390,6 +426,32 @@ export default function App() {
     }
     setGs(ng);
   }
+
+  function pickDiscover(card) {
+    if (!gs || !gs.pendingDiscover || !card) return;
+    getSFX().cardSelect();
+    const r = resolveDiscover(gs, card.uid);
+    pushLog(r.log);
+    const w = checkWin(r.gs);
+    if (w) {
+      setWinner(w);
+      setPhase("gameover");
+      if (w === "player") getSFX().victory(); else getSFX().defeat();
+    }
+    setGs(r.gs);
+    setDiscoverChoice(null);
+  }
+
+  // Mirror engine's pendingDiscover onto UI state when it belongs to the player.
+  useEffect(() => {
+    if (!gs) return;
+    const pd = gs.pendingDiscover;
+    if (pd && pd.side === "player") {
+      setDiscoverChoice({ cards: pd.cards, action: pd.action, sourceLabel: pd.sourceLabel });
+    } else if (!pd && discoverChoice) {
+      setDiscoverChoice(null);
+    }
+  }, [gs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function pickTateDiscover(card) {
     if (!gs || !tateDiscoverChoice || !card) return;
@@ -609,6 +671,11 @@ export default function App() {
 
   function onHandClick(card) {
     if (phase !== "player_turn") return;
+    if (discoverChoice || tateDiscoverChoice) {
+      getSFX().error();
+      toast("Finish the Discover pick first.");
+      return;
+    }
     if (ciaUltSelection) {
       getSFX().error();
       toast("Finish the CIA ultimate first.");
@@ -775,6 +842,7 @@ export default function App() {
     let ng = gs;
 
     if (meta.id === "trump") {
+      setNukeFxActive(true);
       ng = destroyAllMinions(ng, "player");
       ng = damageHero(ng, "ai", 15);
       ng = damageHero(ng, "player", 10);
@@ -1046,7 +1114,7 @@ export default function App() {
   }
 
   function endTurn() {
-    if (phase !== "player_turn" || ciaUltSelection || tateDiscoverChoice) return;
+    if (phase !== "player_turn" || ciaUltSelection || tateDiscoverChoice || discoverChoice) return;
     getSFX().endTurn();
     setSelCard(null); setSelAtk(null); setTgtSpell(null);
     setHovTarget(null); selAtkRef.current = null;
@@ -1720,6 +1788,7 @@ export default function App() {
 
   return (
     <LayoutGroup>
+      <NukeBlastFX active={nukeFxActive} onDone={() => setNukeFxActive(false)} />
       {/* Fullscreen letterbox wrapper */}
       <div style={{ position: "fixed", inset: 0, background: "#020608", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 0 }}>
         {/* Fixed canvas — all position:fixed children anchor to this div due to transform */}
@@ -1762,6 +1831,10 @@ export default function App() {
         </div>
       )}
 
+      <AnimatePresence>
+        {turnBanner && <TurnBanner key={turnBanner.key} bannerKey={turnBanner.key} maxManaGain={turnBanner.maxManaGain} />}
+      </AnimatePresence>
+
       {isTargeting && arrowFrom && (arrowTo || cursorPos) && (
         <ArrowOverlay fromRef={arrowFrom} toRef={arrowTo} cursor={cursorPos} color={arrowColor} />
       )}
@@ -1786,6 +1859,48 @@ export default function App() {
       {toastMsg && (
         <div style={{ position: "absolute", top: 50, left: "50%", transform: "translateX(-50%)", background: "#060f1e", border: "1px solid #378ADD", borderRadius: 8, padding: "8px 22px", fontSize: 13, color: "#85B7EB", zIndex: 200, pointerEvents: "none", whiteSpace: "nowrap", boxShadow: "0 0 20px rgba(55,138,221,0.35)" }}>{toastMsg}</div>
       )}
+
+      {discoverChoice && (() => {
+        const actionLabel = {
+          destroy_from_enemy_hand: "Destroy 1 from enemy hand",
+          destroy_from_enemy_deck: "Destroy 1 from enemy deck",
+          copy_from_enemy_deck_to_hand: "Copy 1 into your hand",
+          steal_from_enemy_deck_to_hand: "Steal 1 from enemy deck",
+          steal_from_enemy_hand: "Steal 1 from enemy hand",
+        }[discoverChoice.action] || "Pick 1";
+        const sourceLabelMap = {
+          destroy_from_enemy_hand: "From enemy hand",
+          destroy_from_enemy_deck: "From enemy deck",
+          copy_from_enemy_deck_to_hand: "From enemy deck",
+          steal_from_enemy_deck_to_hand: "From enemy deck",
+          steal_from_enemy_hand: "From enemy hand",
+        }[discoverChoice.action] || "";
+        return (
+        <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.88)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 450, flexDirection: "column", gap: 20, backdropFilter: "blur(6px)" }}>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: 3, textTransform: "uppercase", color: "#6dc6d6" }}>🕵️ {discoverChoice.sourceLabel || "DISCOVER"}</div>
+            <div style={{ fontSize: 30, fontWeight: 900, color: "#fff", textShadow: "0 0 30px rgba(109,198,214,0.55)", marginTop: 6 }}>{actionLabel}</div>
+            <div style={{ fontSize: 12, color: "#7fb6c4", marginTop: 4, fontStyle: "italic" }}>{sourceLabelMap}</div>
+          </div>
+          <div style={{ display: "flex", gap: 22, padding: 20, flexWrap: "wrap", justifyContent: "center" }}>
+            {discoverChoice.cards.map((card, i) => (
+              <motion.div
+                key={card.uid || card.id + i}
+                initial={{ opacity: 0, y: 30, scale: 0.92 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ delay: i * 0.1, duration: 0.3 }}
+                whileHover={{ scale: 1.08, y: -8 }}
+                whileTap={{ scale: 0.96 }}
+                onClick={() => pickDiscover(card)}
+                style={{ cursor: "pointer", filter: "drop-shadow(0 0 18px rgba(109,198,214,0.55))" }}
+              >
+                <TemplateCardFace card={card} width={200} height={286} />
+              </motion.div>
+            ))}
+          </div>
+        </div>
+        );
+      })()}
 
       {tateDiscoverChoice && (
         <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.88)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 450, flexDirection: "column", gap: 24, backdropFilter: "blur(6px)" }}>
@@ -1973,6 +2088,8 @@ export default function App() {
                   isAttacking={attackVisual?.attacker === m.uid}
                   isDefending={attackVisual?.defender === m.uid}
                   impactKey={attackVisual?.key}
+                  attackDx={attackVisual?.attacker === m.uid ? attackVisual.dx : 0}
+                  attackDy={attackVisual?.attacker === m.uid ? attackVisual.dy : 0}
                   showRune={summonRunes.includes(m.uid)}
                   attackUp={false}
                   onClick={() => onEnemyMinionClick(m.uid)}
@@ -2005,8 +2122,11 @@ export default function App() {
                   isAttacking={attackVisual?.attacker === m.uid}
                   isDefending={attackVisual?.defender === m.uid}
                   impactKey={attackVisual?.key}
+                  attackDx={attackVisual?.attacker === m.uid ? attackVisual.dx : 0}
+                  attackDy={attackVisual?.attacker === m.uid ? attackVisual.dy : 0}
                   showRune={summonRunes.includes(m.uid)}
                   attackUp={true}
+                  showReadyIndicator={phase === "player_turn"}
                   onClick={() => { console.debug("[BoardMinion onClick] uid=", m.uid); onMyMinionClick(m.uid); }}
                 />
               );

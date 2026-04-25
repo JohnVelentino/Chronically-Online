@@ -2,12 +2,14 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import HandCard from "./HandCard.jsx";
 import TemplateCardFace from "./TemplateCardFace.jsx";
+import { getSFX } from "../audio/sfx.js";
 
 export default function MulliganScreen({ hand, onConfirm }) {
   const [selected, setSelected] = useState(new Set());
   const [hovered, setHovered] = useState(null); // { card, x, y }
 
   const toggle = (uid) => {
+    try { getSFX().cardSelect(); } catch (_) {}
     setSelected(prev => {
       const next = new Set(prev);
       if (next.has(uid)) next.delete(uid); else next.add(uid);
@@ -15,7 +17,10 @@ export default function MulliganScreen({ hand, onConfirm }) {
     });
   };
 
-  const confirm = () => onConfirm(Array.from(selected));
+  const confirm = () => {
+    try { getSFX().buttonClick(); } catch (_) {}
+    onConfirm(Array.from(selected));
+  };
 
   return (
     <motion.div

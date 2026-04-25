@@ -1,5 +1,5 @@
 import { mkUid, drawCard, makeDeckFrom } from "./gameState.js";
-import { HEROES } from "../data/cards.js";
+import { HEROES, getLib } from "../data/cards.js";
 
 function triggerBeastGamesRestart(gs) {
   let next = gs;
@@ -46,6 +46,96 @@ export function consumeAlgoTweak(gs, side) {
     return { ...rest, cost: _algoOrigCost ?? c.cost };
   });
   return { ...gs, [side]: { ...gs[side], hand: restoredHand, algoTweakActive: false } };
+}
+
+// ── Discover mechanic ─────────────────────────────────────────────────────────
+// Engine-side support for "reveal 3, pick 1" flows. When the caster is the
+// player, we stash a `pendingDiscover` on gs so the UI can open a modal.
+// When the caster is AI, we auto-pick immediately.
+//
+// Actions:
+//   destroy_from_enemy_hand, destroy_from_enemy_deck,
+//   copy_from_enemy_deck_to_hand,
+//   steal_from_enemy_deck_to_hand, steal_from_enemy_hand
+//
+// `sourceSide` field on pendingDiscover is the caster side (where cards go).
+function sampleN(arr, n) {
+  const bag = [...arr];
+  const out = [];
+  while (out.length < n && bag.length) {
+    const idx = Math.floor(Math.random() * bag.length);
+    out.push(bag.splice(idx, 1)[0]);
+  }
+  return out;
+}
+
+export function resolveDiscover(gs, pickedUid) {
+  const pd = gs.pendingDiscover;
+  if (!pd) return { gs, log: [] };
+  const log = [];
+  const side = pd.side;
+  const enemy = side === "player" ? "ai" : "player";
+  const picked = pd.cards.find(c => c.uid === pickedUid) || pd.cards[0];
+  let ng = { ...gs, pendingDiscover: null };
+  if (!picked) return { gs: ng, log };
+  const label = pd.sourceLabel || "Discover";
+  switch (pd.action) {
+    case "destroy_from_enemy_hand":
+      ng = { ...ng, [enemy]: { ...ng[enemy], hand: ng[enemy].hand.filter(c => c.uid !== picked.uid) } };
+      log.push(`${label}: destroyed ${picked.name} from enemy hand.`);
+      break;
+    case "destroy_from_enemy_deck":
+      ng = { ...ng, [enemy]: { ...ng[enemy], deck: ng[enemy].deck.filter(c => c.uid !== picked.uid) } };
+      log.push(`${label}: destroyed ${picked.name} from enemy deck.`);
+      break;
+    case "copy_from_enemy_deck_to_hand":
+      if (ng[side].hand.length < 10) {
+        ng = { ...ng, [side]: { ...ng[side], hand: [...ng[side].hand, { ...picked, uid: mkUid() }] } };
+        log.push(`${label}: copied ${picked.name}.`);
+      } else log.push(`${label}: hand full — copy refused.`);
+      break;
+    case "copy_from_enemy_hand_to_hand":
+      if (ng[side].hand.length < 10) {
+        ng = { ...ng, [side]: { ...ng[side], hand: [...ng[side].hand, { ...picked, uid: mkUid() }] } };
+        log.push(`${label}: copied ${picked.name} from enemy hand.`);
+      } else log.push(`${label}: hand full — copy refused.`);
+      break;
+    case "steal_from_enemy_deck_to_hand":
+      if (ng[side].hand.length < 10) {
+        ng = {
+          ...ng,
+          [side]: { ...ng[side], hand: [...ng[side].hand, picked] },
+          [enemy]: { ...ng[enemy], deck: ng[enemy].deck.filter(c => c.uid !== picked.uid) },
+        };
+        log.push(`${label}: stole ${picked.name} from enemy deck.`);
+      } else log.push(`${label}: hand full — steal refused.`);
+      break;
+    case "steal_from_enemy_hand":
+      if (ng[side].hand.length < 10) {
+        ng = {
+          ...ng,
+          [side]: { ...ng[side], hand: [...ng[side].hand, picked] },
+          [enemy]: { ...ng[enemy], hand: ng[enemy].hand.filter(c => c.uid !== picked.uid) },
+        };
+        log.push(`${label}: stole ${picked.name}.`);
+      } else log.push(`${label}: hand full — steal refused.`);
+      break;
+    default:
+      log.push(`${label}: unknown action.`);
+  }
+  return { gs: ng, log };
+}
+
+export function openDiscover(gs, { side, pool, action, sourceLabel, count = 3 }) {
+  if (!pool || !pool.length) return gs;
+  const picks = sampleN(pool, Math.min(count, pool.length));
+  if (!picks.length) return gs;
+  if (side === "ai") {
+    const ng = { ...gs, pendingDiscover: { side, cards: picks, action, sourceLabel } };
+    const pickedAi = picks[Math.floor(Math.random() * picks.length)];
+    return resolveDiscover(ng, pickedAi.uid).gs;
+  }
+  return { ...gs, pendingDiscover: { side, cards: picks, action, sourceLabel } };
 }
 
 function asAtk(value) {
@@ -699,6 +789,24 @@ function runTriggerAction(gs, action, ownerSide, sourceSide, selfUid, log = []) 
       return dealDamageToAll(gs, action.targetGroup || "enemy_minions", action.amount || 0, ownerSide);
     case "deal_damage_random_enemy_minion":
       return dealDamageRandomEnemyMinion(gs, ownerSide, action.amount || 0);
+    case "destroy_random_enemy_minion": {
+      const board = gs[enemySide].board || [];
+      if (!board.length) return gs;
+      const victim = pickRandom(board);
+      if (!victim) return gs;
+      return destroyMinion(gs, victim.uid, ownerSide);
+    }
+    case "add_card_to_hand": {
+      if (gs[ownerSide].hand.length >= 10) return gs;
+      let cardData = action.card || null;
+      if (!cardData && action.cardId) {
+        const lib = getLib();
+        cardData = lib.find(c => c.id === action.cardId) || null;
+      }
+      if (!cardData) return gs;
+      const fresh = { ...cardData, uid: mkUid() };
+      return { ...gs, [ownerSide]: { ...gs[ownerSide], hand: [...gs[ownerSide].hand, fresh] } };
+    }
     case "deal_aoe_draw_per_kill":
       return dealAoEAndDrawPerKill(gs, ownerSide, action.targetGroup || "all_enemies", action.amount || 1);
     case "buff_minion":
@@ -743,6 +851,16 @@ function runTriggerAction(gs, action, ownerSide, sourceSide, selfUid, log = []) 
         return next;
       }
       return gs;
+    }
+    case "steal_top_enemy_deck_card": {
+      const deck = gs[enemySide].deck;
+      if (!deck.length || gs[ownerSide].hand.length >= 10) return gs;
+      const top = deck[0];
+      return {
+        ...gs,
+        [ownerSide]: { ...gs[ownerSide], hand: [...gs[ownerSide].hand, top] },
+        [enemySide]: { ...gs[enemySide], deck: deck.slice(1) },
+      };
     }
     case "eli_cohen_steal": {
       const selfMinion = (gs[ownerSide]?.board || []).find(m => m.uid === selfUid);
@@ -827,6 +945,21 @@ export function resolveEndOfTurn(gs, side) {
   };
 
   next = returnTemporaryControl(next, side);
+
+  // Restore Hustlers University -1 cost discount at end of the caster's turn.
+  if (next[side].hand.some(c => c._hustlerDiscounted)) {
+    next = {
+      ...next,
+      [side]: {
+        ...next[side],
+        hand: next[side].hand.map(c => {
+          if (!c._hustlerDiscounted) return c;
+          const { _hustlerDiscounted, _hustlerOrigCost, ...rest } = c;
+          return { ...rest, cost: _hustlerOrigCost ?? (c.cost || 0) };
+        }),
+      },
+    };
+  }
 
   // Clear Zuck's "enemy cards cost +1 next turn" bump at end of the affected side's turn
   if (next[side].hand.some(c => c.zuckBump)) {
@@ -1140,11 +1273,24 @@ export function applySpell(effect, targetId, gs, side, sourceCard = null) {
     gs = { ...gs, [side]: { ...gs[side], armor: (gs[side].armor || 0) + 8 } };
     log.push("+8 Armor.");
   } else if (effect === "draw3_viral_discount1_turn") {
+    const before = gs[side].hand.length;
     gs = drawCards(gs, side, 3);
-    log.push("Drew 3 Viral cards.");
-  } else if (effect === "refresh_ult_plus_aura2") {
-    gs = { ...gs, [side]: { ...gs[side], ultimateUses: Math.max(0, (gs[side].ultimateUses || 0) - 1), tempAuraBonus: (gs[side].tempAuraBonus || 0) + 2, mana: Math.min(10, (gs[side].mana || 0) + 2) } };
-    log.push("Ult refreshed. +2 Aura this turn.");
+    const afterHand = gs[side].hand;
+    // Discount ONLY the freshly drawn cards (those appended after `before`), mark so end-of-turn restores cost.
+    const discountedHand = afterHand.map((c, idx) => {
+      if (idx < before) return c;
+      if (c._hustlerDiscounted) return c;
+      const orig = c.cost || 0;
+      return { ...c, _hustlerOrigCost: orig, cost: Math.max(0, orig - 1), _hustlerDiscounted: true };
+    });
+    gs = { ...gs, [side]: { ...gs[side], hand: discountedHand } };
+    log.push("Drew 3 Viral cards (-1 cost this turn).");
+  } else if (effect === "romanian_compound_rework") {
+    const gate = { id: "romanian_gate_token", name: "Compound Gate", cost: 5, atk: 2, hp: 8, type: "minion", rarity: "rare", keywords: ["taunt"], class: "Viral", token: true, emoji: "🚪", desc: "Taunt." };
+    gs = summonToken(gs, side, gate, 1);
+    gs = { ...gs, [side]: { ...gs[side], armor: (gs[side].armor || 0) + 5 } };
+    gs = drawCards(gs, side, 1);
+    log.push("+5 Armor. 2/8 Gate deployed (Taunt). Drew 1.");
   } else if (effect === "peek_enemy_deck_3_draw1") {
     const preview = gs[enemy].deck.slice(0, 3).map(c => c.id);
     gs = { ...gs, visibility: { ...(gs.visibility || {}), enemyDeckPeek: preview } };
@@ -1330,6 +1476,82 @@ export function applySpell(effect, targetId, gs, side, sourceCard = null) {
     gs = { ...gs, [enemy]: { ...gs[enemy], hand: remaining } };
     gs = drawCards(gs, side, 1);
     log.push("False flag: enemy dumped 2. You drew 1.");
+  } else if (effect === "cia_blacksite") {
+    const pool = gs[enemy].hand;
+    if (pool.length) {
+      gs = openDiscover(gs, { side, pool, action: "destroy_from_enemy_hand", sourceLabel: "Blacksite", count: Math.min(3, pool.length) });
+      log.push("Blacksite: Discover 3 enemy hand — destroy 1.");
+    } else log.push("Enemy hand empty.");
+  } else if (effect === "cia_extraordinary_rendition") {
+    if (gs[side].hand.length >= 10) {
+      log.push("Hand full — steal refused.");
+    } else if (!gs[enemy].hand.length) {
+      log.push("Enemy hand empty.");
+    } else {
+      const picked = pickRandom(gs[enemy].hand);
+      gs = {
+        ...gs,
+        [side]: { ...gs[side], hand: [...gs[side].hand, picked] },
+        [enemy]: { ...gs[enemy], hand: gs[enemy].hand.filter(c => c.uid !== picked.uid) },
+      };
+      log.push(`Extraordinary Rendition: stole ${picked.name}.`);
+    }
+  } else if (effect === "cia_wiretap") {
+    gs = revealHand(gs, enemy, "turn");
+    const vis = gs.visibility || {};
+    gs = { ...gs, visibility: { ...vis, aiHandRevealedTurns: 3, aiHandRevealed: true } };
+    gs = drawCards(gs, side, 1);
+    log.push("Wiretap: enemy hand revealed 3 turns. Drew 1.");
+  } else if (effect === "cia_asset_recruitment") {
+    const pool = gs[enemy].deck.slice(0, Math.min(3, gs[enemy].deck.length));
+    if (pool.length) {
+      gs = openDiscover(gs, { side, pool, action: "copy_from_enemy_deck_to_hand", sourceLabel: "Asset Recruitment", count: pool.length });
+      log.push(`Asset Recruitment: Discover top ${pool.length} enemy deck — copy 1.`);
+    } else log.push("Enemy deck empty.");
+  } else if (effect === "cia_drone_strike") {
+    const enemyBoard = gs[enemy].board.map(m => m.uid);
+    for (const uid of enemyBoard) gs = dealDamage(gs, uid, 4, side);
+    log.push("Drone Strike: 4 damage to all enemy minions.");
+  } else if (effect === "cia_psyop") {
+    gs = revealHand(gs, enemy, "turn");
+    const eh = gs[enemy].hand;
+    if (eh.length) {
+      const d = pickRandom(eh);
+      gs = { ...gs, [enemy]: { ...gs[enemy], hand: eh.filter(c => c.uid !== d.uid) } };
+      log.push(`Psyop: revealed enemy hand. They discarded ${d.name}.`);
+    } else {
+      log.push("Psyop: enemy hand revealed, but nothing to discard.");
+    }
+  } else if (effect === "cia_classified_memo") {
+    const preview = gs[enemy].deck.slice(0, 3).map(c => c.id);
+    gs = { ...gs, visibility: { ...(gs.visibility || {}), enemyDeckPeek: preview } };
+    gs = drawCards(gs, side, 1);
+    log.push("Classified Memo: peeked top 3 enemy deck. Drew 1.");
+  } else if (effect === "cia_uav_recon") {
+    const pool = gs[enemy].hand;
+    if (pool.length) {
+      gs = openDiscover(gs, { side, pool, action: "copy_from_enemy_hand_to_hand", sourceLabel: "UAV Recon", count: Math.min(3, pool.length) });
+      log.push(`UAV Recon: Discover ${Math.min(3, pool.length)} from enemy hand — copy 1.`);
+    } else log.push("UAV Recon: enemy hand empty.");
+  } else if (effect === "mk_ultra_test") {
+    if (!targetId || typeof targetId !== "string" || targetId === "hero" || targetId.startsWith("hero_")) {
+      log.push("MK-Ultra Test: pick an enemy minion.");
+    } else {
+      const target = gs[enemy].board.find(m => m.uid === targetId);
+      if (!target) {
+        log.push("MK-Ultra Test: target gone.");
+      } else if ((target.atk ?? 0) > 3) {
+        log.push("MK-Ultra Test: target has more than 3 Attack — refused.");
+      } else if (gs[side].board.length >= 7) {
+        log.push("MK-Ultra Test: your board is full.");
+      } else {
+        gs = takeControlOfMinion(gs, targetId, side, "turn", side, { keepOnKill: false });
+        log.push(`MK-Ultra Test: brain-pilled ${target.name} for the turn.`);
+      }
+    }
+  } else if (effect === "skibidi_bomb") {
+    gs = dealDamageToAll(gs, "enemy_minions", 3, side);
+    log.push("Skibidi Bomb: 3 damage to all enemy minions.");
   } else if (effect === "eli_cohen_arc") {
     if (gs[enemy].board.length < 7) {
       const eli = createMinionEntity({
@@ -1535,18 +1757,42 @@ export function playBattlecry(card, gs, side) {
   if (kw.includes("sayanim_peek_destroy")) {
     const deck = gs[enemy].deck;
     if (deck.length > 0) {
-      const topCount = Math.min(3, deck.length);
-      const top = deck.slice(0, topCount);
-      const preview = top.map(c => c.id);
-      gs = { ...gs, visibility: { ...(gs.visibility || {}), enemyDeckPeek: preview } };
-      const kill = pickRandom(top);
-      if (kill) {
-        gs = { ...gs, [enemy]: { ...gs[enemy], deck: deck.filter(c => c.uid !== kill.uid) } };
-        log.push(`Sayanim peeked ${topCount}, destroyed ${kill.name}.`);
-      }
+      const top = deck.slice(0, Math.min(3, deck.length));
+      gs = openDiscover(gs, { side, pool: top, action: "destroy_from_enemy_deck", sourceLabel: "Sayanim Agent", count: top.length });
+      log.push(`Sayanim: Discover top ${top.length} enemy deck — destroy 1.`);
     } else {
       log.push("Enemy deck empty — nothing to peek.");
     }
+  }
+  if (kw.includes("cia_blacksite_discover")) {
+    const pool = gs[enemy].hand;
+    if (pool.length) {
+      gs = openDiscover(gs, { side, pool, action: "destroy_from_enemy_hand", sourceLabel: "Blacksite", count: Math.min(3, pool.length) });
+      log.push(`Blacksite: Discover 3 enemy hand — destroy 1.`);
+    } else log.push("Enemy hand empty.");
+  }
+  if (kw.includes("cia_double_agent_discover")) {
+    const pool = gs[enemy].deck.slice(0, Math.min(3, gs[enemy].deck.length));
+    if (pool.length) {
+      gs = openDiscover(gs, { side, pool, action: "steal_from_enemy_deck_to_hand", sourceLabel: "Double Agent", count: pool.length });
+      log.push(`Double Agent: Discover top ${pool.length} enemy deck — steal 1.`);
+    } else log.push("Enemy deck empty.");
+  }
+  if (kw.includes("cia_black_budget_steal_top")) {
+    const deck = gs[enemy].deck;
+    if (deck.length && gs[side].hand.length < 10) {
+      const top = deck[0];
+      gs = {
+        ...gs,
+        [side]: { ...gs[side], hand: [...gs[side].hand, top] },
+        [enemy]: { ...gs[enemy], deck: deck.slice(1) },
+      };
+      log.push(`Black Budget Analyst: stole ${top.name} from enemy deck.`);
+    } else if (!deck.length) log.push("Enemy deck empty.");
+    else log.push("Hand full — steal refused.");
+  }
+  if (kw.includes("cia_dead_drop_deathrattle")) {
+    // marker only; the deathrattle is resolved via effectConfig.on_death
   }
 
   const triggerActions = getTriggerActions(card, "battlecry");

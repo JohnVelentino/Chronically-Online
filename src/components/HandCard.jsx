@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { RC } from "../data/cards.js";
 import { getSFX } from "../audio/sfx.js";
@@ -63,7 +63,7 @@ function LegacyHandCardBody({ card, rc, borderColor, artFailed, setArtFailed }) 
   );
 }
 
-export default function HandCard({ card, selected, disabled, onClick, cardRef, dragEnabled, onDragStart, onDragEnd, width: propWidth, height: propHeight }) {
+function HandCardImpl({ card, selected, disabled, onClick, cardRef, dragEnabled, onDragStart, onDragEnd, width: propWidth, height: propHeight }) {
   const [hov, setHov] = useState(false);
   const [pop, setPop] = useState(false);
   const [mouse, setMouse] = useState(null);
@@ -154,3 +154,5 @@ export default function HandCard({ card, selected, disabled, onClick, cardRef, d
     </motion.div>
   );
 }
+
+export default memo(HandCardImpl);
