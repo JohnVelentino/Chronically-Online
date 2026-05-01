@@ -41,8 +41,26 @@ function BoardMinionImpl({
   const [flash, setFlash] = useState(true);
   const [mouse, setMouse] = useState(null);
   const [impact, setImpact] = useState(false);
+  const [hpHit, setHpHit] = useState(null); // { amount, key } for floating damage number + flash
   const containerRef = useRef(null);
+  const prevHpRef = useRef(minion.hp);
   const breatheDelay = useRef(-Math.random() * 2500).current;
+
+  // Detect HP decreases → trigger bright red damage popup + HP badge flash.
+  useEffect(() => {
+    const prev = prevHpRef.current;
+    if (typeof prev === "number" && minion.hp < prev) {
+      const dmg = prev - minion.hp;
+      const key = Date.now() + Math.random();
+      setHpHit({ amount: dmg, key });
+      const id = setTimeout(() => {
+        setHpHit(curr => (curr && curr.key === key ? null : curr));
+      }, 1100);
+      prevHpRef.current = minion.hp;
+      return () => clearTimeout(id);
+    }
+    prevHpRef.current = minion.hp;
+  }, [minion.hp]);
 
   const rc = RC[minion.rarity || "common"];
   const classKey = String(minion.classTag || minion.faction || minion.class || "").trim().toLowerCase();
@@ -54,6 +72,8 @@ function BoardMinionImpl({
   const canAct = !minion.summoningSick && minion.canAttack !== false && minion.atk > 0;
   const alreadyAttacked = !minion.summoningSick && minion.canAttack === false && minion.atk > 0;
   const isDamaged = minion.hp < (minion.maxHp ?? minion.hp);
+  const baseAtk = minion.baseAtk ?? minion.atk ?? 0;
+  const isAtkBuffed = (minion.atk ?? 0) > baseAtk;
 
   // Extra keyword badges (skip taunt/divine_shield — shown via rings)
   const kwBadges = (minion.keywords || [])
@@ -116,6 +136,15 @@ function BoardMinionImpl({
         @keyframes divineShimmer { 0%,100% { opacity:0.55; } 50% { opacity:1; } }
         @keyframes readyRingPulse { 0%,100% { box-shadow: 0 0 14px rgba(70,230,130,0.75), 0 0 30px rgba(70,230,130,0.45); opacity: 0.95; } 50% { box-shadow: 0 0 26px rgba(120,255,170,1), 0 0 56px rgba(70,230,130,0.8); opacity: 1; } }
         @keyframes spentRingPulse { 0%,100% { box-shadow: 0 0 8px rgba(220,60,60,0.55); opacity: 0.75; } 50% { box-shadow: 0 0 14px rgba(255,90,90,0.8); opacity: 0.9; } }
+        @keyframes hpHitFlash { 0% { background: rgba(255,255,255,0.95); transform: scale(1.18); } 35% { background: rgba(255,90,90,0.55); transform: scale(1.06); } 100% { background: rgba(255,32,64,0); transform: scale(1); } }
+        @keyframes hpHitShake { 0%,100% { transform: translateX(0); } 20% { transform: translateX(-2px); } 40% { transform: translateX(2px); } 60% { transform: translateX(-1.5px); } 80% { transform: translateX(1.5px); } }
+        @keyframes dmgPopup {
+          0%   { opacity: 0; transform: translate(-50%, 0) scale(0.5); }
+          15%  { opacity: 1; transform: translate(-50%, -10px) scale(1.35); }
+          35%  { opacity: 1; transform: translate(-50%, -22px) scale(1.1); }
+          85%  { opacity: 1; transform: translate(-50%, -42px) scale(1.0); }
+          100% { opacity: 0; transform: translate(-50%, -56px) scale(0.92); }
+        }
       `}</style>
       <motion.div
         ref={(el) => {
@@ -161,7 +190,13 @@ function BoardMinionImpl({
           boxSizing: "border-box",
           overflow: "visible",
           willChange: "transform",
-          zIndex: isAttacking ? 50 : undefined,
+          // Attacking lifts the minion above all sibling minions and adjacent
+          // hero rows; defending stays slightly elevated so impact glow/badges
+          // remain on top during the bash. Idle minions sit above the board's
+          // chrome so their stat badges (which poke outside the circle) never
+          // get clipped by hero rows or horizon line.
+          zIndex: isAttacking ? 200 : isDefending ? 80 : 10,
+          position: "relative",
         }}
       >
         {/* ── Keyword badges row (above circle) ─────────────── */}
@@ -310,44 +345,106 @@ function BoardMinionImpl({
             </div>
           )}
 
-          {/* ── ATK badge — bottom left ── */}
+          {/* ── ATK badge — bottom left (buffed → green digit + green glow) ── */}
           <div style={{
             position: "absolute",
             bottom: -BADGE_OFFSET,
             left: -Math.round(BADGE * 0.22),
             width: BADGE, height: BADGE, borderRadius: "50%",
-            background: "linear-gradient(145deg, #6b3b00, #c87d08)",
-            border: "2.5px solid rgba(255,210,80,0.55)",
-            boxShadow: "0 3px 12px rgba(0,0,0,0.85), 0 0 10px rgba(200,134,10,0.55)",
+            background: isAtkBuffed
+              ? "linear-gradient(145deg, #1d5a2a, #2fa84a)"
+              : "linear-gradient(145deg, #6b3b00, #c87d08)",
+            border: isAtkBuffed
+              ? "2.5px solid rgba(140,255,160,0.7)"
+              : "2.5px solid rgba(255,210,80,0.55)",
+            boxShadow: isAtkBuffed
+              ? "0 3px 12px rgba(0,0,0,0.85), 0 0 14px rgba(70,230,120,0.85), 0 0 26px rgba(70,230,120,0.45)"
+              : "0 3px 12px rgba(0,0,0,0.85), 0 0 10px rgba(200,134,10,0.55)",
             display: "flex", alignItems: "center", justifyContent: "center",
             zIndex: 5, flexShrink: 0,
           }}>
-            <span style={{ fontSize: BADGE_FONT, fontWeight: 900, color: "#fff", textShadow: "0 1px 4px #000", lineHeight: 1 }}>
+            <span style={{
+              fontSize: BADGE_FONT, fontWeight: 900,
+              color: isAtkBuffed ? "#aaffb8" : "#fff",
+              textShadow: isAtkBuffed
+                ? "0 0 4px #fff, 0 0 10px rgba(70,230,120,0.95), 0 1px 3px rgba(0,0,0,0.9)"
+                : "0 1px 4px #000",
+              lineHeight: 1,
+            }}>
               {minion.atk}
             </span>
           </div>
 
           {/* ── HP badge — bottom right ── */}
-          <div style={{
-            position: "absolute",
-            bottom: -BADGE_OFFSET,
-            right: -Math.round(BADGE * 0.22),
-            width: BADGE, height: BADGE, borderRadius: "50%",
-            background: isDamaged
-              ? "linear-gradient(145deg, #5a0010, #a01020)"
-              : "linear-gradient(145deg, #7a0010, #c0192c)",
-            border: `2.5px solid rgba(255,${isDamaged ? 80 : 120},120,0.55)`,
-            boxShadow: `0 3px 12px rgba(0,0,0,0.85), 0 0 10px rgba(192,25,44,${isDamaged ? "0.8" : "0.5"})`,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            zIndex: 5, flexShrink: 0, position: "absolute",
-          }}>
+          <div
+            key={hpHit ? `hp-hit-${hpHit.key}` : "hp-idle"}
+            style={{
+              position: "absolute",
+              bottom: -BADGE_OFFSET,
+              right: -Math.round(BADGE * 0.22),
+              width: BADGE, height: BADGE, borderRadius: "50%",
+              background: isDamaged
+                ? "linear-gradient(145deg, #5a0010, #a01020)"
+                : "linear-gradient(145deg, #7a0010, #c0192c)",
+              border: `2.5px solid rgba(255,${isDamaged ? 80 : 120},120,0.55)`,
+              boxShadow: `0 3px 12px rgba(0,0,0,0.85), 0 0 10px rgba(192,25,44,${isDamaged ? "0.8" : "0.5"})`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              zIndex: 6, flexShrink: 0,
+              animation: hpHit ? "hpHitShake 0.45s ease-out" : "none",
+            }}
+          >
             {isDamaged && (
               <div style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "rgba(255,32,64,0.4)", animation: "damagedHpPulse 1.4s ease-in-out infinite", pointerEvents: "none" }} />
             )}
-            <span style={{ fontSize: BADGE_FONT, fontWeight: 900, color: "#fff", textShadow: "0 1px 4px #000", lineHeight: 1, position: "relative", zIndex: 1 }}>
+            {/* Bright white→red flash overlay on hit */}
+            {hpHit && (
+              <div
+                key={`flash-${hpHit.key}`}
+                style={{
+                  position: "absolute", inset: 0, borderRadius: "50%",
+                  pointerEvents: "none",
+                  animation: "hpHitFlash 0.55s ease-out forwards",
+                  mixBlendMode: "screen",
+                  zIndex: 2,
+                }}
+              />
+            )}
+            <span style={{
+              fontSize: BADGE_FONT, fontWeight: 900, color: "#fff",
+              textShadow: "0 0 2px #000, 0 0 6px #000, 0 1px 4px rgba(0,0,0,0.95)",
+              lineHeight: 1, position: "relative", zIndex: 3,
+              WebkitTextStroke: "0.6px rgba(0,0,0,0.85)",
+            }}>
               {minion.hp}
             </span>
           </div>
+
+          {/* ── Floating damage number — bright red, popping above HP badge ── */}
+          {hpHit && (
+            <div
+              key={`dmg-${hpHit.key}`}
+              style={{
+                position: "absolute",
+                bottom: -BADGE_OFFSET + Math.round(BADGE * 0.55),
+                right: -Math.round(BADGE * 0.22) + Math.round(BADGE * 0.5),
+                transform: "translate(-50%, 0)",
+                fontSize: Math.round(BADGE_FONT * 1.45),
+                fontWeight: 900,
+                color: "#ff2c2c",
+                textShadow:
+                  "0 0 2px #fff, 0 0 6px #fff, 0 0 10px rgba(255,255,255,0.9), 0 0 18px rgba(255,40,40,0.85), 0 2px 4px rgba(0,0,0,0.85)",
+                WebkitTextStroke: "1.2px #fff8f8",
+                letterSpacing: 0.5,
+                pointerEvents: "none",
+                zIndex: 12,
+                animation: "dmgPopup 1.05s cubic-bezier(0.2,0.85,0.3,1) forwards",
+                whiteSpace: "nowrap",
+                fontFamily: "system-ui, sans-serif",
+              }}
+            >
+              -{hpHit.amount}
+            </div>
+          )}
 
         </div>{/* end circle */}
 

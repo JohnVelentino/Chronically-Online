@@ -1,53 +1,46 @@
 /**
  * bgMusic — background music player with autoplay-unlock + crossfade.
  *
- * Drop files into:
- *   public/assets/music/menu.mp3     — plays on hero select + menu
- *   public/assets/music/battle.mp3   — battle playlist track 1
- *   public/assets/music/battle2.mp3  — battle playlist track 2
- *   ...
- *   public/assets/music/battle8.mp3  — battle playlist track 8
+ * Files:
+ *   public/assets/music/menu.mp3      — menu / hero select (loops)
+ *   public/assets/music/battle.mp3    — battle playlist track 1
+ *   public/assets/music/battle2..8.mp3 — additional battle tracks
  *
- * Battle plays as sequential playlist: battle → battle2 → ... → battle8 → battle.
- * Missing tracks skipped silently.
- *
- * Optional extras (any one of these is enough — first match wins):
- *   menu.ogg, menu.wav  /  battle.ogg, battle.wav  /  battle2.ogg, ...
+ * Battle plays as a randomized playlist. Order reshuffles after the last track.
+ * All srcs are eagerly preloaded so playback is gapless and the menu starts
+ * with no perceptible delay (no HEAD probe, no buffering wait on first play).
  */
 
 const BASE = import.meta.env.BASE_URL || "/";
-const CANDIDATE_EXTS = ["mp3", "ogg", "wav"];
 const BATTLE_COUNT = 8;
 
-function buildCandidates(name) {
-  return CANDIDATE_EXTS.map((ext) => `${BASE}assets/music/${name}.${ext}`.replace(/\/+/g, "/"));
+function srcFor(name) {
+  return `${BASE}assets/music/${name}.mp3`.replace(/\/+/g, "/");
 }
 
-function battlePlaylistNames() {
-  const names = ["battle"];
-  for (let i = 2; i <= BATTLE_COUNT; i++) names.push(`battle${i}`);
-  return names;
-}
+const MENU_SRC = srcFor("menu");
+const BATTLE_SRCS = (() => {
+  const out = [srcFor("battle")];
+  for (let i = 2; i <= BATTLE_COUNT; i++) out.push(srcFor(`battle${i}`));
+  return out;
+})();
 
-const TRACKS = {
-  menu:        { candidates: buildCandidates("menu"),         volume: 0.35, loop: true, fadeInMs: 1800 },
-  battle:      {
-    playlist: battlePlaylistNames().map((n) => ({ candidates: buildCandidates(n) })),
-    volume: 0.3,
-    loop: false,
-    fadeInMs: 900,
-  },
-};
+const MENU_VOL = 0.35;
+const BATTLE_VOL = 0.3;
+const MENU_FADE_IN_MS = 200;   // near-instant for menu
+const BATTLE_FADE_IN_MS = 600;
+const SWAP_FADE_OUT_MS = 500;
 
 let currentKey = null;
 let currentEl = null;
-let currentPlaylistIdx = 0;
-let resolvedBattlePlaylist = null; // cached array of playable srcs
 let unlocked = false;
 let pendingKey = null;
-let userVolume = 0.35; // persisted desired volume
+let userVolume = MENU_VOL;
 let userMuted = false;
 const listeners = new Set();
+
+let battleOrder = null;  // shuffled array of battle srcs
+let battleIdx = 0;
 
 try {
   const v = localStorage.getItem("bgMusic:volume");
@@ -64,15 +57,31 @@ function persist() {
 function effectiveVolume() { return userMuted ? 0 : userVolume; }
 function notify() { listeners.forEach(fn => { try { fn({ volume: userVolume, muted: userMuted }); } catch {} }); }
 
-function makeAudio(src, volume, loop) {
-  const el = new Audio();
-  el.src = src;
-  el.loop = !!loop;
-  el.volume = 0;
-  el.preload = "auto";
-  el.crossOrigin = "anonymous";
-  el._targetVolume = volume;
+// ── Persistent <audio> cache: one element per src, reused across plays ──
+const audioCache = new Map();
+function getAudio(src, loop) {
+  let el = audioCache.get(src);
+  if (!el) {
+    el = new Audio();
+    el.src = src;
+    el.preload = "auto";
+    el.loop = !!loop;
+    el.volume = 0;
+    try { el.load(); } catch {}
+    audioCache.set(src, el);
+  } else {
+    el.loop = !!loop;
+  }
   return el;
+}
+
+// Eager preload at module init: menu + first two battle tracks so the first
+// menu start is instant and battle->battle transitions don't gap.
+if (typeof window !== "undefined") {
+  getAudio(MENU_SRC, true);
+  // Warm up battle pool with a few elements; rest load on demand.
+  getAudio(BATTLE_SRCS[0], false);
+  if (BATTLE_SRCS[1]) getAudio(BATTLE_SRCS[1], false);
 }
 
 function fadeTo(el, targetVol, durationMs = 700) {
@@ -88,83 +97,81 @@ function fadeTo(el, targetVol, durationMs = 700) {
   requestAnimationFrame(step);
 }
 
-async function probeFirstPlayable(candidates) {
-  for (const src of candidates) {
-    try {
-      const head = await fetch(src, { method: "HEAD" });
-      if (head.ok) return src;
-    } catch {}
+function shuffle(arr) {
+  const out = [...arr];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
   }
-  return null;
+  return out;
 }
 
-async function resolveBattlePlaylist() {
-  if (resolvedBattlePlaylist) return resolvedBattlePlaylist;
-  const def = TRACKS.battle;
-  const resolved = [];
-  for (const entry of def.playlist) {
-    const src = await probeFirstPlayable(entry.candidates);
-    if (src) resolved.push(src);
+function reshuffleBattle() {
+  let next = shuffle(BATTLE_SRCS);
+  // Avoid replaying the same track back-to-back when wrapping.
+  if (battleOrder && next.length > 1 && next[0] === battleOrder[battleOrder.length - 1]) {
+    [next[0], next[1]] = [next[1], next[0]];
   }
-  resolvedBattlePlaylist = resolved;
-  return resolved;
+  battleOrder = next;
+  battleIdx = 0;
 }
 
-async function startTrack(key) {
-  const def = TRACKS[key];
-  if (!def) return;
+function preloadBattleAt(idx) {
+  if (!battleOrder || !battleOrder.length) return;
+  const wrapped = ((idx % battleOrder.length) + battleOrder.length) % battleOrder.length;
+  // Touch the cache so the next track is buffered before its turn.
+  getAudio(battleOrder[wrapped], false);
+}
 
-  // battle = playlist mode
-  if (key === "battle") {
-    const list = await resolveBattlePlaylist();
-    if (!list.length) return;
-    currentPlaylistIdx = 0;
-    return playBattleIndex(0);
-  }
-
-  const src = await probeFirstPlayable(def.candidates);
-  if (!src) return;
-
-  const next = makeAudio(src, def.volume, def.loop !== false);
+async function startMenu() {
+  const el = getAudio(MENU_SRC, true);
+  try { el.currentTime = 0; } catch {}
   try {
-    await next.play();
+    await el.play();
   } catch {
-    pendingKey = key;
+    pendingKey = "menu";
     return;
   }
-
-  if (currentEl) fadeTo(currentEl, 0, 600);
-  currentEl = next;
-  currentKey = key;
-  fadeTo(next, effectiveVolume(), def.fadeInMs || 900);
+  if (currentEl && currentEl !== el) fadeTo(currentEl, 0, SWAP_FADE_OUT_MS);
+  currentEl = el;
+  currentKey = "menu";
+  fadeTo(el, effectiveVolume(), MENU_FADE_IN_MS);
 }
 
-async function playBattleIndex(idx) {
-  const list = resolvedBattlePlaylist;
-  if (!list || !list.length) return;
-  const wrappedIdx = ((idx % list.length) + list.length) % list.length;
-  currentPlaylistIdx = wrappedIdx;
-  const def = TRACKS.battle;
-  const src = list[wrappedIdx];
-
-  const next = makeAudio(src, def.volume, false);
-  next.addEventListener("ended", () => {
-    // only advance if still the active battle element
-    if (currentEl !== next || currentKey !== "battle") return;
-    playBattleIndex(currentPlaylistIdx + 1);
-  });
-
+async function playBattleAt(idx) {
+  if (!battleOrder) reshuffleBattle();
+  const len = battleOrder.length;
+  if (!len) return;
+  // Reshuffle whenever we wrap past the end.
+  if (idx >= len) reshuffleBattle();
+  battleIdx = ((idx % len) + len) % len;
+  const src = battleOrder[battleIdx];
+  const el = getAudio(src, false);
+  try { el.currentTime = 0; } catch {}
+  el.onended = () => {
+    if (currentEl !== el || currentKey !== "battle") return;
+    playBattleAt(battleIdx + 1);
+  };
   try {
-    await next.play();
+    await el.play();
   } catch {
     pendingKey = "battle";
     return;
   }
-
-  if (currentEl) fadeTo(currentEl, 0, 600);
-  currentEl = next;
+  if (currentEl && currentEl !== el) fadeTo(currentEl, 0, SWAP_FADE_OUT_MS);
+  currentEl = el;
   currentKey = "battle";
-  fadeTo(next, effectiveVolume(), def.fadeInMs || 900);
+  fadeTo(el, effectiveVolume(), BATTLE_FADE_IN_MS);
+  // Preload the NEXT track so the handoff at "ended" is gapless.
+  preloadBattleAt(battleIdx + 1);
+}
+
+async function startTrack(key) {
+  if (key === "menu") return startMenu();
+  if (key === "battle") {
+    if (!battleOrder) reshuffleBattle();
+    return playBattleAt(battleIdx);
+  }
 }
 
 function unlockOnGesture() {
@@ -174,13 +181,17 @@ function unlockOnGesture() {
     const k = pendingKey;
     pendingKey = null;
     startTrack(k);
-  } else if (currentKey) {
-    currentEl?.play?.().catch(() => {});
+  } else if (currentEl) {
+    currentEl.play?.().catch(() => {});
   }
 }
 
 if (typeof window !== "undefined") {
-  const handler = () => { unlockOnGesture(); window.removeEventListener("pointerdown", handler); window.removeEventListener("keydown", handler); };
+  const handler = () => {
+    unlockOnGesture();
+    window.removeEventListener("pointerdown", handler);
+    window.removeEventListener("keydown", handler);
+  };
   window.addEventListener("pointerdown", handler, { once: false });
   window.addEventListener("keydown", handler, { once: false });
 }
@@ -202,7 +213,6 @@ export const bgMusic = {
   },
   setVolume(v) {
     userVolume = Math.max(0, Math.min(1, v));
-    if (currentEl) currentEl._targetVolume = effectiveVolume();
     if (currentEl) fadeTo(currentEl, effectiveVolume(), 200);
     persist(); notify();
   },
@@ -216,7 +226,7 @@ export const bgMusic = {
   toggleMute() { this.setMuted(!userMuted); },
   subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); },
   nextBattleTrack() {
-    if (currentKey === "battle") playBattleIndex(currentPlaylistIdx + 1);
+    if (currentKey === "battle") playBattleAt(battleIdx + 1);
   },
 };
 

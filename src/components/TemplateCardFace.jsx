@@ -656,14 +656,22 @@ function TemplateCardFaceImpl({ card, width, height, onFrameError }) {
           left: Math.round(width  * 0.040),
         }}
       >
-        <span style={{
-          position:  "relative",
-          fontSize:  clamp(Math.round(gemDiam * 0.44), 10, 22),
-          fontWeight:900,
-          color:     "#ffffff",
-          lineHeight:1,
-          textShadow:"0 1px 4px rgba(0,0,50,0.95), 0 0 8px rgba(120,190,255,0.55)",
-        }}>
+        <span
+          className={
+            card._glitchCostState === "high"
+              ? "tsg-cost-high"
+              : card._glitchCostState === "low"
+                ? "tsg-cost-low"
+                : ""
+          }
+          style={{
+            position:  "relative",
+            fontSize:  clamp(Math.round(gemDiam * 0.44), 10, 22),
+            fontWeight:900,
+            color:     "#ffffff",
+            lineHeight:1,
+            textShadow:"0 1px 4px rgba(0,0,50,0.95), 0 0 8px rgba(120,190,255,0.55)",
+          }}>
           {manaIcon ? `${manaIcon} ` : ""}{card.cost ?? 0}
         </span>
       </FacetedGem>

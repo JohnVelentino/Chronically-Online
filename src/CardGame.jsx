@@ -23,6 +23,7 @@ import TurnBanner from "./components/TurnBanner.jsx";
 import TemplateCardFace from "./components/TemplateCardFace.jsx";
 import UltimateTooltip from "./components/UltimateTooltip.jsx";
 import NukeBlastFX from "./components/NukeBlastFX.jsx";
+import { DrawCardReveal, DiscardCardReveal } from "./components/CardRevealOverlay.jsx";
 import useDevConfig from "./dev/useDevConfig.js";
 
 const CANVAS_W = 1600;
@@ -127,6 +128,8 @@ export default function App() {
   const spotlightTimer = useRef(null);
   const [deckPulse, setDeckPulse] = useState(false);
   const [pendingDrawCard, setPendingDrawCard] = useState(null);
+  const [discardOverlays, setDiscardOverlays] = useState([]);
+  const processedDiscardIds = useRef(new Set());
   const [summonRunes, setSummonRunes] = useState([]);
   const [turnBanner, setTurnBanner] = useState(null); // { key, maxManaGain }
   const prevPlayerMaxManaRef = useRef(0);
@@ -544,8 +547,9 @@ export default function App() {
     if (drawn) {
       setDeckPulse(true);
       setPendingDrawCard(drawn);
-      setTimeout(() => setDeckPulse(false), 220);
-      setTimeout(() => setPendingDrawCard(curr => (curr?.uid === drawn.uid ? null : curr)), 900);
+      setTimeout(() => setDeckPulse(false), 280);
+      // 4s hold + flight in DrawCardReveal; clear shortly after to allow exit anim.
+      setTimeout(() => setPendingDrawCard(curr => (curr?.uid === drawn.uid ? null : curr)), 4400);
     }
     const fatigueDamage = drawnPlayer.lastFatigueDamage || 0;
     const fatigueBlocked = drawnPlayer.lastFatigueBlocked || 0;
@@ -571,6 +575,32 @@ export default function App() {
     });
     if (newEntrants > 0) getSFX().summon();
   }, [gs]);
+
+  // ── Discard reveal overlays ──────────────────────────────────────────
+  // Engine appends to gs.discardEvents whenever a card is forcibly removed
+  // from a hand (algo_tweak, psyop, blacksite, discard_self_draw3, ...).
+  // Each event is shown as a dramatic flying-card reveal so the user can
+  // SEE what was discarded — own and enemy hand alike.
+  useEffect(() => {
+    const events = gs?.discardEvents;
+    if (!events || events.length === 0) return;
+    const fresh = events.filter(e => e && e.eventId && !processedDiscardIds.current.has(e.eventId));
+    if (fresh.length === 0) return;
+    fresh.forEach(e => processedDiscardIds.current.add(e.eventId));
+    // Stagger so back-to-back discards (Algo Tweak = 2) don't pile on top.
+    fresh.forEach((e, idx) => {
+      const overlayId = e.eventId;
+      const delay = idx * 380;
+      setTimeout(() => {
+        setDiscardOverlays(curr => [...curr, { ...e, overlayId, startedAt: Date.now() }]);
+        try { getSFX().error?.(); } catch {}
+      }, delay);
+      // Total visible duration ≈ 3.2s (entry 0.5 + hold 2.0 + exit 0.7).
+      setTimeout(() => {
+        setDiscardOverlays(curr => curr.filter(o => o.overlayId !== overlayId));
+      }, delay + 3300);
+    });
+  }, [gs?.discardEvents]);
 
   function castSpell(card, targetId) {
     // Pre-check: elusive enemy minion can't be spell-targeted. Reject before consuming card/mana.
@@ -1075,6 +1105,78 @@ export default function App() {
         ng = { ...ng, player: { ...ng.player, board: [...ng.player.board, eli] } };
       }
       pushLog(["📟 OPERATION GRIM BEEPER!", `Destroyed ${killCount} cards from enemy deck. Wiped their board. Hand revealed 3 turns. Eli Cohen planted — starts stealing.`]);
+    } else if (meta.id === "bezos") {
+      const summon = (def) => {
+        if (ng.player.board.length >= 7) return;
+        const m = createMinionEntity(def);
+        m.bezosAscensionToken = true;
+        ng = { ...ng, player: { ...ng.player, board: [...ng.player.board, m] } };
+      };
+      summon({
+        id: "orbital_reef", name: "Orbital Reef", type: "minion", cost: 0, rarity: "legendary", class: "Tech",
+        atk: 0, hp: 40, emoji: "🛰️",
+        keywords: ["taunt", "deathrattle"],
+        desc: "Taunt. End of turn: summon a 1/1 Amazon Space Driver. Deathrattle: destroy ALL minions on the board (EPIC SPACE CRASH).",
+        effectConfig: {
+          end_of_turn: [{ type: "summon_token", token: { id: "amazon_space_driver", name: "Amazon Space Driver", atk: 1, hp: 1, type: "minion", rarity: "common", class: "Tech", emoji: "🚚", keywords: [] } }],
+          on_death: [{ type: "destroy_all_minions" }],
+        },
+      });
+      summon({
+        id: "new_shepard", name: "New Shepard", type: "minion", cost: 0, rarity: "legendary", class: "Tech",
+        atk: 5, hp: 2, emoji: "🚀", keywords: ["charge"], desc: "Charge.",
+      });
+      summon({
+        id: "new_glenn", name: "New Glenn", type: "minion", cost: 0, rarity: "legendary", class: "Tech",
+        atk: 8, hp: 16, emoji: "🛸", keywords: [], desc: "Heavy lift orbital."
+      });
+      summon({
+        id: "logistics_ai_unit", name: "Logistics AI Unit", type: "minion", cost: 0, rarity: "legendary", class: "Tech",
+        atk: 2, hp: 4, emoji: "🤖",
+        keywords: [],
+        desc: "End of turn: REPAIR — draw 1, heal all friendly characters 4 HP, mark an enemy minion (set HP to 1).",
+        effectConfig: {
+          end_of_turn: [
+            { type: "draw_cards", amount: 1 },
+            { type: "heal_friendlies", amount: 4 },
+            { type: "mark_enemy_one_hp" },
+          ],
+        },
+      });
+      ng = { ...ng, player: { ...ng.player, bezosAscension: true } };
+      pushLog(["🚀 BLUE ORIGIN ASCENSION!", "Bezos ascends. Untargetable until summons fall."]);
+    } else if (meta.id === "biden") {
+      // Randomize all minion stats 0-9
+      ["player", "ai"].forEach(s => {
+        ng = {
+          ...ng,
+          [s]: {
+            ...ng[s],
+            board: ng[s].board.map(m => {
+              const newAtk = Math.floor(Math.random() * 10);
+              const newHp = Math.floor(Math.random() * 10);
+              return { ...m, baseAtk: newAtk, hp: newHp || 1, maxHp: newHp || 1, atk: newAtk, tempAttackBonus: 0, auraAttackBonus: 0 };
+            }),
+          },
+        };
+      });
+      // Randomize hand costs 0-10 with state markers
+      ["player", "ai"].forEach(s => {
+        ng = {
+          ...ng,
+          [s]: {
+            ...ng[s],
+            hand: ng[s].hand.map(c => {
+              const orig = (c._glitchOrigCost != null) ? c._glitchOrigCost : (c.cost || 0);
+              const newCost = Math.floor(Math.random() * 11);
+              const state = newCost > orig ? "high" : newCost < orig ? "low" : "neutral";
+              return { ...c, cost: newCost, _glitchOrigCost: orig, _glitchCostState: state };
+            }),
+          },
+        };
+      });
+      ng = { ...ng, totalSystemGlitchTurns: 5 };
+      pushLog(["🤯 TOTAL SYSTEM GLITCH!", "5 turns of chaos. Stats and costs randomized. Spell targets reroll."]);
     } else {
       toast("This hero has no ultimate configured.");
       return;
@@ -1808,10 +1910,18 @@ export default function App() {
               event.preventDefault();
               cancelInteractions();
             }}
-            className="game-root"
+            className={`game-root${(gs?.totalSystemGlitchTurns || 0) > 0 ? " tsg-shake" : ""}`}
             style={{ width: CANVAS_W, height: CANVAS_H, overflow: "hidden", display: "flex", flexDirection: "column", fontFamily: "system-ui, sans-serif", color: "#fff", position: "relative", userSelect: "none" }}
       >
       <style>{`@keyframes pulse{0%,100%{opacity:0.6}50%{opacity:1}} @keyframes flashFade{0%{opacity:1}100%{opacity:0}} @keyframes floatUp{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}`}</style>
+      {(gs?.totalSystemGlitchTurns || 0) > 0 && (
+        <div className="tsg-overlay" />
+      )}
+      {(gs?.totalSystemGlitchTurns || 0) > 0 && (
+        <div style={{ position: "fixed", top: 12, right: 12, padding: "6px 12px", background: "rgba(0,0,0,0.8)", border: "1px solid #5588ff", borderRadius: 6, fontSize: 11, fontWeight: 900, color: "#aacfff", letterSpacing: 1.4, zIndex: 70, textTransform: "uppercase", boxShadow: "0 0 18px rgba(85,136,255,0.6)" }}>
+          ⚡ TOTAL SYSTEM GLITCH: {gs.totalSystemGlitchTurns} TURNS
+        </div>
+      )}
       {devOpen && <CardCreator onClose={() => setDevOpen(false)} savedDecks={savedDecks} onSavedDecksChange={setSavedDecks} activeDeck={activeDeck} onSelectDeck={setActiveDeck} />}
       <div style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 650 }}>
         {damageNumbers.map(n => (
@@ -2054,7 +2164,7 @@ export default function App() {
             <div style={{ fontSize: 14, color: "#667", fontWeight: 900 }}>{gs.ai.deck.length}</div>
           </div>
           <div style={{ position: "relative", display: "inline-flex" }}>
-            <HeroPortrait name="AI Nemesis" hp={gs.ai.hp} maxHp={gs.ai.maxHp} emoji="💀" portrait={gs.ai.portrait} armor={gs.ai.armor || 0} isAI heroRef={enemyHeroRef} isTarget={isTargeting && !aiHasTaunt} onClick={onEnemyHeroClick} size={120} showName={false} />
+            <HeroPortrait name="AI Nemesis" hp={gs.ai.hp} maxHp={gs.ai.maxHp} emoji="💀" portrait={gs.ai.portrait} armor={gs.ai.armor || 0} isAI heroRef={enemyHeroRef} isTarget={isTargeting && !aiHasTaunt} onClick={onEnemyHeroClick} size={120} showName={false} bezosAscending={!!gs.ai.bezosAscension} />
             {aiActionHighlight && (
               <div style={{ position: "absolute", bottom: -8, left: "50%", transform: "translateX(-50%)", background: "rgba(239,159,39,0.92)", color: "#1a0a00", fontSize: 8, fontWeight: 900, letterSpacing: 0.8, padding: "2px 6px", borderRadius: 4, whiteSpace: "nowrap", pointerEvents: "none", boxShadow: "0 0 8px rgba(239,159,39,0.6)", zIndex: 10 }}>
                 ⚡ ACTING
@@ -2072,7 +2182,7 @@ export default function App() {
         <div
           ref={enemyBoardContainerRef}
           className="board-zone board-zone--enemy"
-          style={{ flex: "1 1 28px", minHeight: 80, maxHeight: 270, display: "flex", alignItems: "center", justifyContent: "center", flexWrap: "nowrap", gap: BOARD_CARD_GAP_PX, padding: `4px ${BOARD_ZONE_PAD_X_PX}px`, position: "relative", overflow: "visible", ...boardHitStyle }}
+          style={{ flex: "1 1 28px", minHeight: 80, maxHeight: 270, display: "flex", alignItems: "center", justifyContent: "center", flexWrap: "nowrap", gap: BOARD_CARD_GAP_PX, padding: `4px ${BOARD_ZONE_PAD_X_PX}px`, position: "relative", overflow: "visible", zIndex: 70, ...boardHitStyle }}
         >
           {showParticles && <BoardAmbience color="rgba(68,128,196,0.18)" zone="enemy" />}
           {showLabels && gs.ai.board.length === 0 && <div className="board-zone-empty-label">— enemy board —</div>}
@@ -2106,7 +2216,7 @@ export default function App() {
         <div
           ref={playerBoardContainerRef}
           className={`board-zone board-zone--player${isOverPlayZone && !!selCard && !tgtSpell ? " board-zone--drop-active" : ""}`}
-          style={{ flex: "1 1 28px", minHeight: 80, maxHeight: 270, display: "flex", alignItems: "center", justifyContent: "center", flexWrap: "nowrap", gap: BOARD_CARD_GAP_PX, padding: `4px ${BOARD_ZONE_PAD_X_PX}px`, position: "relative", overflow: "visible", ...boardHitStyle, ...(draggingCard ? { borderColor: "#FAC775", boxShadow: "0 0 16px rgba(250,199,117,0.5)" } : {}) }}
+          style={{ flex: "1 1 28px", minHeight: 80, maxHeight: 270, display: "flex", alignItems: "center", justifyContent: "center", flexWrap: "nowrap", gap: BOARD_CARD_GAP_PX, padding: `4px ${BOARD_ZONE_PAD_X_PX}px`, position: "relative", overflow: "visible", zIndex: 70, ...boardHitStyle, ...(draggingCard ? { borderColor: "#FAC775", boxShadow: "0 0 16px rgba(250,199,117,0.5)" } : {}) }}
         >
           {showParticles && <BoardAmbience color="rgba(40,138,111,0.2)" zone="player" />}
           {showLabels && gs.player.board.length === 0 && <div className="board-zone-empty-label">— your board —</div>}
@@ -2307,7 +2417,7 @@ export default function App() {
 
           {/* Hero portrait — CENTER */}
           <div style={{ position: "relative", filter: "drop-shadow(0 4px 18px rgba(0,0,0,0.70))" }}>
-            <HeroPortrait name={gs.player.name} hp={gs.player.hp} maxHp={gs.player.maxHp} emoji={gs.player.emoji || "🧙"} portrait={gs.player.portrait} armor={gs.player.armor || 0} isAI={false} heroRef={playerHeroRef} showName={false} size={120} />
+            <HeroPortrait name={gs.player.name} hp={gs.player.hp} maxHp={gs.player.maxHp} emoji={gs.player.emoji || "🧙"} portrait={gs.player.portrait} armor={gs.player.armor || 0} isAI={false} heroRef={playerHeroRef} showName={false} size={120} bezosAscending={!!gs.player.bezosAscension} />
           </div>
         </div>
           );
@@ -2344,7 +2454,7 @@ export default function App() {
         </AnimatePresence>
 
         {/* ── End Turn + Cancel — center-right overlay ────────────── */}
-        <div style={{ position: "absolute", right: 60, top: "50%", transform: "translateY(-50%)", zIndex: 20, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+        <div style={{ position: "absolute", right: 60, top: "50%", transform: "translateY(-50%)", zIndex: 120, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
           {ciaUltSelection && (
             <div style={{ minWidth: 220, background: "rgba(5,16,26,0.94)", border: "1px solid #6dc6d6", borderRadius: 10, padding: "10px 12px", boxShadow: "0 0 18px rgba(109,198,214,0.24)" }}>
               <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: 1, textTransform: "uppercase", color: "#6dc6d6", textAlign: "center", marginBottom: 6 }}>Deep State Download</div>
@@ -2392,52 +2502,22 @@ export default function App() {
           </div>
         </div>
 
-        {/* ── Draw card animation — flies from deck area to hero center ── */}
+        {/* ── Draw card cinematic — front-right reveal then arc to hand ── */}
         <AnimatePresence initial={false}>
-          {pendingDrawCard && (() => {
-            const rc = RC[pendingDrawCard.rarity || "common"] || RC.common;
-            return (
-              <motion.div
-                key={pendingDrawCard.uid}
-                initial={{ opacity: 0, scale: 0.3, x: 120, y: -80 }}
-                animate={{
-                  opacity: [0, 1, 1, 1, 0],
-                  scale: [0.3, 1.15, 1, 0.95, 0.7],
-                  x: [120, 40, 0, -20, -60],
-                  y: [-80, -40, 0, 20, 60],
-                }}
-                transition={{ duration: 0.9, times: [0, 0.3, 0.55, 0.75, 1], ease: [0.25, 0.9, 0.35, 1] }}
-                style={{
-                  position: "absolute",
-                  bottom: 90,
-                  left: "50%",
-                  marginLeft: -50,
-                  width: 100,
-                  height: 148,
-                  background: rc.bg,
-                  border: "2px solid " + rc.border,
-                  borderRadius: 12,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  pointerEvents: "none",
-                  boxShadow: `0 10px 30px rgba(0,0,0,0.6), 0 0 24px ${rc.glow}`,
-                  zIndex: 300,
-                }}
-              >
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: [0, 0.8, 0] }}
-                  transition={{ duration: 0.75, times: [0, 0.4, 1] }}
-                  style={{ position: "absolute", inset: -6, borderRadius: 16, background: `radial-gradient(circle at 50% 50%, ${rc.glow} 0%, transparent 70%)`, pointerEvents: "none", zIndex: 0 }}
-                />
-                <span aria-hidden style={{ position: "absolute", top: 0, left: "-60%", width: "60%", height: "100%", background: "linear-gradient(115deg, transparent 0%, rgba(255,255,255,0.65) 50%, transparent 100%)", animation: "ultimateShimmer 0.75s ease-out 1", pointerEvents: "none" }} />
-                <div style={{ position: "relative", fontSize: 38, filter: `drop-shadow(0 3px 10px ${rc.glow})`, zIndex: 1 }}>{pendingDrawCard.emoji || "🃏"}</div>
-                <div style={{ fontSize: 9, fontWeight: 800, color: "#fff", textAlign: "center", marginTop: 4, zIndex: 1 }}>{pendingDrawCard.name}</div>
-              </motion.div>
-            );
-          })()}
+          {pendingDrawCard && (
+            <DrawCardReveal
+              key={pendingDrawCard.uid}
+              card={pendingDrawCard}
+              onSkip={() => setPendingDrawCard(curr => (curr?.uid === pendingDrawCard.uid ? null : curr))}
+            />
+          )}
+        </AnimatePresence>
+
+        {/* ── Discard reveals — every forced removal, both hands ────── */}
+        <AnimatePresence initial={false}>
+          {discardOverlays.map((d, idx) => (
+            <DiscardCardReveal key={d.overlayId} entry={d} stackIndex={idx} />
+          ))}
         </AnimatePresence>
 
         {/* Game log removed */}

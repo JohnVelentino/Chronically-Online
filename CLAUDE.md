@@ -4,90 +4,41 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-```bash
-npm run dev       # Start dev server (Vite, hot reload)
-npm run build     # Production build
-npm run lint      # ESLint check
-npm run preview   # Preview production build locally
-```
+`npm run dev | build | lint | preview`. No tests — user validates in browser.
 
-There are no tests. The game is validated by running it in the browser.
+**Important:** never run `npm run dev` or browser checks. User runs server + tests own changes. Just give recap after edits.
 
 ## Architecture
 
-This is a single-page browser card game — a Hearthstone-style 1v1 between a human player and an AI opponent. Everything runs client-side; there is no backend.
+Single-page browser card game (Hearthstone-style 1v1 vs AI). Client-only, no backend.
 
-### Data flow
+### Layout
 
-```
-src/data/cards.js          ← card/hero definitions (pure data)
-       ↓
-src/engine/gameState.js    ← player init, deck building, draw logic
-src/engine/combat.js       ← all game mechanics (the bulk of logic)
-src/engine/ai.js           ← AI turn simulation, returns step array
-       ↓
-src/CardGame.jsx           ← top-level game component, owns all state
-       ↓
-src/components/*           ← pure display components
-```
+- `src/data/cards.js` — card/hero data. `HEROES`, `CLASS_CARDS`, `NEUTRAL_CARDS`, `getLib()`, `DECK_SIZE_TARGET=35`.
+- `src/engine/gameState.js` — `initPlayer`, `makeDeck`, `makeDeckFrom`, `drawCard`.
+- `src/engine/combat.js` — all mechanics. New card effects → case in `applySpell` or `playBattlecry`.
+- `src/engine/ai.js` — `runAiTurnSteps` returns step array; `CardGame.jsx` replays w/ delays.
+- `src/CardGame.jsx` — top-level state owner. Single immutable `gs` via `useState`. Layout magic numbers are named consts at top.
+- `src/components/*` — pure display.
+- `src/dev/devConfig.js` — localStorage config: `window.__DEV__.{get,set,reset}DevConfig()`. Hook: `useDevConfig.js`.
 
-### Game state (`gs`)
+### State
 
-The entire match lives in a single immutable `gs` object managed by `useState` in `CardGame.jsx`. It has the shape:
+`gs = { player, ai, turn, visibility }`. Both players have `{ name, hp, maxHp, armor, mana, maxMana, deck, hand, board, ... }`. Engine fns take `gs`, return new `gs` + `log[]`. Never mutate.
 
-```js
-{
-  player: { name, hp, maxHp, armor, mana, maxMana, deck, hand, board, ... },
-  ai:     { same shape as player },
-  turn:   "player" | "ai",
-  visibility: { ... }   // which AI hand cards are revealed
-}
-```
+### Card schema
 
-All engine functions take `gs` and return a new `gs` (plus a `log[]`). Never mutate state directly.
+Minion: `{ id, name, cost, atk, hp, type:"minion", desc, emoji, rarity, keywords[], class? }`
+Spell: `{ id, name, cost, type:"spell", effect, targetType:"minion"|"none"|"hero", desc, emoji, rarity, class? }`
 
-### Engine layer (`src/engine/`)
+Supported keywords: `taunt, charge, rush, elusive, divine_shield, battlecry, windfury, lifesteal, poisonous, aura_other_friendly_attack_1`.
 
-- **`gameState.js`** — `initPlayer`, `makeDeck`, `makeDeckFrom`, `drawCard`. Deck construction and player initialization only.
-- **`combat.js`** — Every mechanic: `applySpell`, `playBattlecry`, `doAttack`, `dealDamage`, `buffMinion`, `destroyMinion`, `summonToken`, `takeControlOfMinion`, `startTurn`, `resolveEndOfTurn`, and ~30 more. Adding a new card effect means adding a case in `applySpell` (line ~665) or `playBattlecry` (line ~777).
-- **`ai.js`** — `runAiTurnSteps` simulates a full AI turn and returns an array of step objects. `CardGame.jsx` replays them one-by-one with delays for animation.
+### Adding card
 
-### Card & hero data (`src/data/cards.js`)
+1. Define in `CLASS_CARDS` or `NEUTRAL_CARDS`.
+2. Spell → case in `applySpell`. Battlecry → case in `playBattlecry`.
+3. Class-specific → add id to hero's `deckIds`.
 
-- `HEROES` — array of hero definitions with `id`, `deckIds[]`, `themeColor`, portrait path, etc.
-- `CLASS_CARDS` — class-specific cards (Trump/USA!, Elon/Elon, CIA/USA!)
-- `NEUTRAL_CARDS` — shared cards available to all heroes
-- `getLib()` — returns the merged pool of all cards
-- `DECK_SIZE_TARGET = 35`
+### Adding hero
 
-Card schema for minions: `{ id, name, cost, atk, hp, type:"minion", desc, emoji, rarity, keywords[], class? }`  
-Card schema for spells: `{ id, name, cost, type:"spell", effect, targetType:"minion"|"none"|"hero", desc, emoji, rarity, class? }`
-
-Keywords that have engine support: `taunt`, `charge`, `rush`, `elusive` (stealth), `divine_shield`, `battlecry`, `windfury`, `lifesteal`, `poisonous`, `aura_other_friendly_attack_1`.
-
-### Dev config system (`src/dev/`)
-
-A localStorage-persisted config store for live UI tweaking. Access from browser console:
-
-```js
-window.__DEV__.getDevConfig()
-window.__DEV__.setDevConfig({ visual: { ambientParticles: false } })
-window.__DEV__.resetDevConfig()
-```
-
-`devConfig.js` exports `getDevConfig`, `setDevConfig`, `resetDevConfig`, `subscribe`. The React hook `useDevConfig.js` wraps these for component use.
-
-### Key UI constants in `CardGame.jsx`
-
-Layout magic numbers (hero positions, animation timing, board sizing) are defined as named constants at the top of `CardGame.jsx`. Change those rather than hard-coding values inline.
-
-### Adding a new card
-
-1. Add the card definition to `CLASS_CARDS` or `NEUTRAL_CARDS` in `src/data/cards.js`.
-2. If it has a spell effect, add a case for `effect` in `applySpell` in `src/engine/combat.js`.
-3. If it has a battlecry, add a case in `playBattlecry` in `src/engine/combat.js`.
-4. Add the card's `id` to the relevant hero's `deckIds` in `HEROES` if it's class-specific.
-
-### Adding a new hero
-
-Add an entry to the `HEROES` array in `src/data/cards.js` with `id`, `name`, `class`, `deckIds` (20 card IDs), and optional `portrait`/`cardBack` paths. Ultimate abilities are handled by `getUltimateMeta` in `CardGame.jsx`.
+Entry in `HEROES`: `id`, `name`, `class`, `deckIds` (20 ids), optional `portrait`/`cardBack`. Ultimate via `getUltimateMeta` in `CardGame.jsx`.

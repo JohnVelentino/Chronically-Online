@@ -80,5 +80,21 @@ export function getUltimateMeta(hero) {
     themeColor: "#0a1b3d",
     desc: "Destroy half of enemy deck (random). Destroy all enemy minions. Reveal enemy hand for 3 turns. Summon a 4/8 Eli Cohen that steals an enemy card at end of your turn.",
   };
+  if (heroId === "bezos") return {
+    id: "bezos",
+    name: "Blue Origin Ascension",
+    cost: 0,
+    emoji: "🚀",
+    themeColor: "#ff9900",
+    desc: "Fly to space. Untargetable until your summons die. Summon Orbital Reef 0/40 (deathrattle: wipe board), New Shepard 5/2 Charge, New Glenn 8/16, and Logistics AI 2/4 (end of turn: draw, heal friendlies 4, mark enemy minion 1 HP).",
+  };
+  if (heroId === "biden") return {
+    id: "biden",
+    name: "Total System Glitch",
+    cost: 0,
+    emoji: "🤯",
+    themeColor: "#5588ff",
+    desc: "5 turns of chaos. All minion stats randomized 0–9. Hand costs randomized 0–10 each turn. Targeted spells retarget randomly while active.",
+  };
   return { id: "generic", name: "Ultimate", cost: 0, emoji: "⚡", themeColor: "#ffcc33", desc: "A powerful hero-specific ability." };
 }

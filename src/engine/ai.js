@@ -217,6 +217,69 @@ function resolveAiUltimate(gs, heroId) {
       ng = { ...ng, ai: { ...ng.ai, board: [...ng.ai.board, eli] } };
     }
     log.push("📟 AI runs OPERATION GRIM BEEPER!", `Destroyed ${killCount} of your deck. Wiped your board. Hand revealed 3 turns. Eli Cohen planted.`);
+  } else if (heroId === "bezos") {
+    const summon = (def) => {
+      if (ng.ai.board.length >= 7) return;
+      const m = createMinionEntity(def);
+      m.bezosAscensionToken = true;
+      ng = { ...ng, ai: { ...ng.ai, board: [...ng.ai.board, m] } };
+    };
+    summon({
+      id: "orbital_reef", name: "Orbital Reef", type: "minion", cost: 0, rarity: "legendary", class: "Tech",
+      atk: 0, hp: 40, emoji: "🛰️",
+      keywords: ["taunt", "deathrattle"],
+      desc: "Taunt. End of turn: summon a 1/1 Amazon Space Driver. Deathrattle: destroy ALL minions.",
+      effectConfig: {
+        end_of_turn: [{ type: "summon_token", token: { id: "amazon_space_driver", name: "Amazon Space Driver", atk: 1, hp: 1, type: "minion", rarity: "common", class: "Tech", emoji: "🚚", keywords: [] } }],
+        on_death: [{ type: "destroy_all_minions" }],
+      },
+    });
+    summon({ id: "new_shepard", name: "New Shepard", type: "minion", cost: 0, rarity: "legendary", class: "Tech", atk: 5, hp: 2, emoji: "🚀", keywords: ["charge"], desc: "Charge." });
+    summon({ id: "new_glenn", name: "New Glenn", type: "minion", cost: 0, rarity: "legendary", class: "Tech", atk: 8, hp: 16, emoji: "🛸", keywords: [], desc: "Heavy lift." });
+    summon({
+      id: "logistics_ai_unit", name: "Logistics AI Unit", type: "minion", cost: 0, rarity: "legendary", class: "Tech",
+      atk: 2, hp: 4, emoji: "🤖", keywords: [],
+      desc: "End of turn: draw 1, heal friendlies 4, mark enemy minion (1 HP).",
+      effectConfig: {
+        end_of_turn: [
+          { type: "draw_cards", amount: 1 },
+          { type: "heal_friendlies", amount: 4 },
+          { type: "mark_enemy_one_hp" },
+        ],
+      },
+    });
+    ng = { ...ng, ai: { ...ng.ai, bezosAscension: true } };
+    log.push("🚀 AI ASCENDS — BLUE ORIGIN!", "Bezos in orbit. Hero untargetable until summons drop.");
+  } else if (heroId === "biden") {
+    ["player", "ai"].forEach(s => {
+      ng = {
+        ...ng,
+        [s]: {
+          ...ng[s],
+          board: ng[s].board.map(m => {
+            const newAtk = Math.floor(Math.random() * 10);
+            const newHp = Math.floor(Math.random() * 10);
+            return { ...m, baseAtk: newAtk, hp: newHp || 1, maxHp: newHp || 1, atk: newAtk, tempAttackBonus: 0, auraAttackBonus: 0 };
+          }),
+        },
+      };
+    });
+    ["player", "ai"].forEach(s => {
+      ng = {
+        ...ng,
+        [s]: {
+          ...ng[s],
+          hand: ng[s].hand.map(c => {
+            const orig = (c._glitchOrigCost != null) ? c._glitchOrigCost : (c.cost || 0);
+            const newCost = Math.floor(Math.random() * 11);
+            const state = newCost > orig ? "high" : newCost < orig ? "low" : "neutral";
+            return { ...c, cost: newCost, _glitchOrigCost: orig, _glitchCostState: state };
+          }),
+        },
+      };
+    });
+    ng = { ...ng, totalSystemGlitchTurns: 5 };
+    log.push("🤯 AI TRIGGERS TOTAL SYSTEM GLITCH!", "5 turns of chaos. Stats and costs scrambled.");
   }
   ng = {
     ...ng,

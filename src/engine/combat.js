@@ -82,6 +82,7 @@ export function resolveDiscover(gs, pickedUid) {
   switch (pd.action) {
     case "destroy_from_enemy_hand":
       ng = { ...ng, [enemy]: { ...ng[enemy], hand: ng[enemy].hand.filter(c => c.uid !== picked.uid) } };
+      ng = recordDiscard(ng, enemy, picked, label);
       log.push(`${label}: destroyed ${picked.name} from enemy hand.`);
       break;
     case "destroy_from_enemy_deck":
@@ -151,6 +152,17 @@ function pickRandom(list) {
   return list[Math.floor(Math.random() * list.length)];
 }
 
+let __discardEventCounter = 0;
+// Append a discard reveal event to gs so the UI can animate the lost card.
+// `side` = side that LOST the card. `reason` = short label (spell/effect name).
+function recordDiscard(gs, side, card, reason = "") {
+  if (!card) return gs;
+  __discardEventCounter += 1;
+  const eventId = `disc-${Date.now()}-${__discardEventCounter}-${Math.random().toString(36).slice(2, 7)}`;
+  const events = Array.isArray(gs.discardEvents) ? gs.discardEvents : [];
+  return { ...gs, discardEvents: [...events, { eventId, side, card, reason }] };
+}
+
 function applyHeroDamageWithArmor(hero, amount) {
   const armor = Math.max(0, hero.armor || 0);
   const blocked = Math.min(armor, amount);
@@ -160,6 +172,11 @@ function applyHeroDamageWithArmor(hero, amount) {
 
 function consumeHeroDamage(gs, heroSide, amount) {
   if (amount <= 0) return { gs, amount: 0 };
+  // Bezos Ascension: hero is invulnerable while any of his ult summons are still alive.
+  if (gs[heroSide].bezosAscension) {
+    const stillAscending = (gs[heroSide].board || []).some(m => m.bezosAscensionToken);
+    if (stillAscending) return { gs, amount: 0 };
+  }
   const shield = gs[heroSide].heroShieldTurns || 0;
   if (shield > 0) {
     return { gs, amount: 0 };
@@ -868,6 +885,24 @@ function runTriggerAction(gs, action, ownerSide, sourceSide, selfUid, log = []) 
       const victim = getEnemySide(operator);
       return stealRandomCardFromHand(gs, victim, operator);
     }
+    case "heal_friendlies": {
+      const amt = action.amount || 0;
+      const p = gs[ownerSide];
+      return {
+        ...gs,
+        [ownerSide]: {
+          ...p,
+          hp: Math.min(p.maxHp, p.hp + amt),
+          board: p.board.map(m => ({ ...m, hp: Math.min(m.maxHp ?? m.hp, m.hp + amt) })),
+        },
+      };
+    }
+    case "mark_enemy_one_hp": {
+      const eb = gs[enemySide].board;
+      if (!eb.length) return gs;
+      const t = pickRandom(eb);
+      return updateMinion(gs, enemySide, t.uid, m => ({ ...m, hp: 1 }));
+    }
     default:
       return gs;
   }
@@ -1009,6 +1044,99 @@ export function resolveEndOfTurn(gs, side) {
     };
   }
 
+  // ── Total System Glitch (Biden ult) decay + chaos cost reroll ──────────────
+  if ((next.totalSystemGlitchTurns || 0) > 0) {
+    next = { ...next, totalSystemGlitchTurns: next.totalSystemGlitchTurns - 1 };
+    if (next.totalSystemGlitchTurns <= 0) {
+      // Restore original costs on both hands.
+      ["player", "ai"].forEach(s => {
+        next = {
+          ...next,
+          [s]: {
+            ...next[s],
+            hand: next[s].hand.map(c => {
+              if (c._glitchOrigCost == null) return c;
+              const { _glitchOrigCost, _glitchCostState, ...rest } = c;
+              return { ...rest, cost: _glitchOrigCost };
+            }),
+          },
+        };
+      });
+      log.push("✅ Total System Glitch ended. Costs restored.");
+    } else {
+      // Reroll all hand costs to a random value 0..10 with state markers.
+      ["player", "ai"].forEach(s => {
+        next = {
+          ...next,
+          [s]: {
+            ...next[s],
+            hand: next[s].hand.map(c => {
+              const orig = c._glitchOrigCost != null ? c._glitchOrigCost : (c.cost || 0);
+              const newCost = Math.floor(Math.random() * 11);
+              const state = newCost > orig ? "high" : newCost < orig ? "low" : "neutral";
+              return { ...c, cost: newCost, _glitchOrigCost: orig, _glitchCostState: state };
+            }),
+          },
+        };
+      });
+    }
+  }
+
+  // ── Policy Change end-of-turn revert ───────────────────────────────────────
+  if (next.policySwapActiveOn === side) {
+    ["player", "ai"].forEach(s => {
+      next = {
+        ...next,
+        [s]: {
+          ...next[s],
+          board: next[s].board.map(m => {
+            if (!m._policySwap) return m;
+            const { _policySwap, ...rest } = m;
+            return normalizeMinionStats({
+              ...rest,
+              baseAtk: _policySwap.origAtk,
+              hp: Math.min(_policySwap.origHp, m.hp),
+              maxHp: _policySwap.origMax,
+            });
+          }),
+        },
+      };
+    });
+    next = { ...next, policySwapActiveOn: null };
+    log.push("Policy Change reverted.");
+  }
+
+  // ── Hidden Effect (Behind The Scenes) — fires at end of caster's turn ───────
+  const ownPending = next[side].pendingHiddenEffect;
+  if (ownPending && ownPending.fireOn === getEnemySide(side)) {
+    const roll = Math.floor(Math.random() * 4);
+    if (roll === 0) {
+      next = drawCards(next, side, 2);
+      log.push("Behind The Scenes: drew 2.");
+    } else if (roll === 1) {
+      next = dealDamageToAll(next, "enemy_minions", 3, side);
+      log.push("Behind The Scenes: 3 to enemy minions.");
+    } else if (roll === 2) {
+      next = damageHero(next, getEnemySide(side), 5);
+      log.push("Behind The Scenes: 5 to enemy hero.");
+    } else {
+      next = summonToken(next, side, { id: "agent_token", name: "Secret Agent", atk: 4, hp: 4, type: "minion", rarity: "rare", class: "USA!", emoji: "🕴️", keywords: [] }, 1);
+      log.push("Behind The Scenes: 4/4 Agent summoned.");
+    }
+    next = { ...next, [side]: { ...next[side], pendingHiddenEffect: null } };
+  }
+
+  // ── Bezos Ascension cleanup: when all summons dead, hero is targetable again ─
+  ["player", "ai"].forEach(s => {
+    if (next[s].bezosAscension) {
+      const stillAscending = (next[s].board || []).some(m => m.bezosAscensionToken);
+      if (!stillAscending) {
+        next = { ...next, [s]: { ...next[s], bezosAscension: false } };
+        log.push("Bezos returns from space.");
+      }
+    }
+  });
+
   next = resolveDeaths(next, side, log);
   return { gs: recalculateAuras(next), log };
 }
@@ -1045,6 +1173,35 @@ const SPELL_EFFECT_MAP = {
 export function applySpell(effect, targetId, gs, side, sourceCard = null) {
   const log = [];
   const enemy = side === "player" ? "ai" : "player";
+
+  // Bureaucratic Delay: enemy applied a flag to caster's side. Fizzle or double.
+  let bureaucraticDouble = false;
+  if (gs[side].bureaucraticFlag && !sourceCard?._bureaucraticEcho) {
+    const flag = gs[side].bureaucraticFlag;
+    gs = { ...gs, [side]: { ...gs[side], bureaucraticFlag: null } };
+    if (flag === "fizzle") {
+      log.push("Bureaucratic Delay: spell FIZZLED.");
+      return { gs, log };
+    }
+    if (flag === "double") bureaucraticDouble = true;
+  }
+
+  // Total System Glitch (Biden ult): retarget every targeted spell to a random valid character.
+  if ((gs.totalSystemGlitchTurns || 0) > 0 && targetId) {
+    const allTargets = [
+      "hero_player",
+      "hero_ai",
+      ...gs.player.board.map(m => m.uid),
+      ...gs.ai.board.map(m => m.uid),
+    ];
+    if (allTargets.length) {
+      const reroll = allTargets[Math.floor(Math.random() * allTargets.length)];
+      if (reroll !== targetId) {
+        log.push(`⚡ GLITCH! Retargeted to ${reroll === "hero_player" ? "Player Hero" : reroll === "hero_ai" ? "Enemy Hero" : "random minion"}.`);
+        targetId = reroll;
+      }
+    }
+  }
 
   // Elusive guard: spells from the opposing side cannot target an elusive minion.
   // Friendly buffs are still allowed — only block when the target belongs to the enemy.
@@ -1240,6 +1397,7 @@ export function applySpell(effect, targetId, gs, side, sourceCard = null) {
     if (p.hand.length > 0) {
       const discard = pickRandom(p.hand);
       gs = { ...gs, [side]: { ...p, hand: p.hand.filter(c => c.uid !== discard.uid) } };
+      gs = recordDiscard(gs, side, discard, "Discard");
     }
     gs = drawCards(gs, side, 3);
     log.push("Discarded 1. Drew 3.");
@@ -1317,6 +1475,8 @@ export function applySpell(effect, targetId, gs, side, sourceCard = null) {
       const d2 = remaining.length ? pickRandom(remaining) : null;
       remaining = d2 ? remaining.filter(c => c.uid !== d2.uid) : remaining;
       gs = { ...gs, [enemy]: { ...gs[enemy], hand: remaining } };
+      if (d1) gs = recordDiscard(gs, enemy, d1, "Algo Tweak");
+      if (d2) gs = recordDiscard(gs, enemy, d2, "Algo Tweak");
     }
     // Apply -2 cost to every card currently in caster's hand (but not the played algo_tweak — already removed).
     // First card played consumes the effect: on play, remaining discounted cards are restored.
@@ -1518,6 +1678,7 @@ export function applySpell(effect, targetId, gs, side, sourceCard = null) {
     if (eh.length) {
       const d = pickRandom(eh);
       gs = { ...gs, [enemy]: { ...gs[enemy], hand: eh.filter(c => c.uid !== d.uid) } };
+      gs = recordDiscard(gs, enemy, d, "Psyop");
       log.push(`Psyop: revealed enemy hand. They discarded ${d.name}.`);
     } else {
       log.push("Psyop: enemy hand revealed, but nothing to discard.");
@@ -1552,6 +1713,132 @@ export function applySpell(effect, targetId, gs, side, sourceCard = null) {
   } else if (effect === "skibidi_bomb") {
     gs = dealDamageToAll(gs, "enemy_minions", 3, side);
     log.push("Skibidi Bomb: 3 damage to all enemy minions.");
+  } else if (effect === "customer_data") {
+    gs = revealHand(gs, enemy, "turn");
+    gs = drawCards(gs, side, 1);
+    log.push("Customer Data: revealed enemy hand. Drew 1.");
+  } else if (effect === "subscription_trap") {
+    gs = { ...gs, [enemy]: { ...gs[enemy], pendingManaNextTurn: (gs[enemy].pendingManaNextTurn || 0) - 2 } };
+    log.push("Subscription Trap: -2 enemy Aura next turn.");
+  } else if (effect === "clone_product") {
+    if (gs[enemy].board.length > 0 && gs[side].hand.length < 10) {
+      const picked = pickRandom(gs[enemy].board);
+      const clone = {
+        id: picked.id,
+        name: picked.name,
+        cost: Math.max(0, (picked.cost || 0) - 1),
+        atk: picked.baseAtk ?? picked.atk ?? 0,
+        hp: picked.maxHp ?? picked.hp ?? 1,
+        type: "minion",
+        rarity: picked.rarity || "common",
+        class: picked.class || "neutral",
+        keywords: Array.isArray(picked.keywords) ? [...picked.keywords] : [],
+        desc: picked.desc || "",
+        emoji: picked.emoji || "",
+        uid: mkUid(),
+      };
+      gs = { ...gs, [side]: { ...gs[side], hand: [...gs[side].hand, clone] } };
+      log.push(`Clone Product: copied ${picked.name} (-1 cost).`);
+    } else {
+      log.push("Clone Product: no enemy minion or hand full.");
+    }
+  } else if (effect === "aws_outage") {
+    const enemyMinions = gs[enemy].board.slice();
+    for (const m of enemyMinions) gs = silenceMinion(gs, m.uid, side);
+    log.push("AWS Outage: silenced all enemy minions.");
+  } else if (effect === "press_conference") {
+    const roll = Math.floor(Math.random() * 4);
+    if (roll === 0) {
+      const p = gs[side];
+      gs = { ...gs, [side]: { ...p, board: p.board.map(m => normalizeMinionStats({ ...m, baseAtk: (m.baseAtk ?? m.atk) + 2, hp: m.hp + 2, maxHp: (m.maxHp ?? m.hp) + 2 })) } };
+      log.push("Press Conference: friendlies +2/+2!");
+    } else if (roll === 1) {
+      gs = dealDamageToAll(gs, "enemy_minions", 2, side);
+      log.push("Press Conference: enemies hit for 2.");
+    } else if (roll === 2) {
+      gs = summonToken(gs, side, { id: "press_token", name: "Reporter", atk: 3, hp: 3, type: "minion", rarity: "common", class: "USA!", emoji: "🎤", keywords: [] }, 1);
+      log.push("Press Conference: 3/3 Reporter summoned!");
+    } else {
+      log.push("Press Conference: …no comment.");
+    }
+  } else if (effect === "bureaucratic_delay") {
+    const flip = Math.random() < 0.5;
+    gs = { ...gs, [enemy]: { ...gs[enemy], bureaucraticFlag: flip ? "fizzle" : "double" } };
+    log.push(flip ? "Bureaucratic Delay: enemy's next card fizzles." : "Bureaucratic Delay: enemy's next card double-triggers.");
+  } else if (effect === "behind_scenes") {
+    gs = { ...gs, [side]: { ...gs[side], pendingHiddenEffect: { fireOn: enemy } } };
+    log.push("Behind The Scenes: hidden effect armed…");
+  } else if (effect === "lobbyists") {
+    const sidePicked = Math.random() < 0.5 ? side : enemy;
+    const p = gs[sidePicked];
+    gs = { ...gs, [sidePicked]: { ...p, board: p.board.map(m => normalizeMinionStats({ ...m, baseAtk: (m.baseAtk ?? m.atk) + 1, hp: m.hp + 1, maxHp: (m.maxHp ?? m.hp) + 1 })) } };
+    log.push(`Lobbyists: ${sidePicked === side ? "your" : "enemy"} minions +1/+1.`);
+  } else if (effect === "policy_change") {
+    ["player", "ai"].forEach(s => {
+      gs = {
+        ...gs,
+        [s]: {
+          ...gs[s],
+          board: gs[s].board.map(m => {
+            const a = m.baseAtk ?? m.atk ?? 0;
+            const h = m.hp ?? 0;
+            return normalizeMinionStats({
+              ...m,
+              _policySwap: { origAtk: a, origHp: h, origMax: m.maxHp ?? h },
+              baseAtk: h,
+              hp: a,
+              maxHp: a,
+            });
+          }),
+        },
+      };
+    });
+    gs = { ...gs, policySwapActiveOn: enemy };
+    log.push("Policy Change: ATK/HP swapped on all minions this turn.");
+  } else if (effect === "classified_document") {
+    for (let i = 0; i < 2; i++) {
+      const pool = Math.random() < 0.5 ? gs[side].deck : gs[enemy].deck;
+      if (pool.length && gs[side].hand.length < 10) {
+        const picked = pickRandom(pool);
+        gs = { ...gs, [side]: { ...gs[side], hand: [...gs[side].hand, { ...picked, uid: mkUid() }] } };
+      }
+    }
+    log.push("Classified Document: 2 random cards added.");
+  } else if (effect === "teleprompter_malfunction") {
+    if (Math.random() < 0.5) {
+      const last = gs[side].lastSpellCast;
+      if (last) {
+        const r = applySpell(last.effect, null, gs, side, last);
+        gs = r.gs;
+        log.push("Teleprompter: last spell triggered again!");
+        log.push(...r.log);
+      } else {
+        log.push("Teleprompter: no last spell to repeat.");
+      }
+    } else {
+      gs = damageHero(gs, side, 3);
+      log.push("Teleprompter malfunctioned: -3 to your hero.");
+    }
+  } else if (effect === "sleep_mode") {
+    const all = [...gs.player.board, ...gs.ai.board];
+    if (all.length) {
+      const t = pickRandom(all);
+      gs = silenceMinion(gs, t.uid, side);
+      log.push(`Sleep Mode: ${t.name} put to sleep.`);
+    } else {
+      log.push("Sleep Mode: no targets.");
+    }
+  } else if (effect === "old_school_politics") {
+    const lib = getLib();
+    const spells = lib.filter(c => c.type === "spell" && !c.token);
+    for (let i = 0; i < 2; i++) {
+      if (gs[side].hand.length >= 10) break;
+      const picked = pickRandom(spells);
+      if (!picked) break;
+      const card = { ...picked, uid: mkUid(), cost: Math.max(0, (picked.cost || 0) - 1) };
+      gs = { ...gs, [side]: { ...gs[side], hand: [...gs[side].hand, card] } };
+    }
+    log.push("Old School Politics: 2 spells added (-1 cost).");
   } else if (effect === "eli_cohen_arc") {
     if (gs[enemy].board.length < 7) {
       const eli = createMinionEntity({
@@ -1579,6 +1866,20 @@ export function applySpell(effect, targetId, gs, side, sourceCard = null) {
 
   gs = resolveOnEnemySpellCast(gs, side, log);
   gs = resolveDeaths(gs, side, log);
+
+  // Track for Teleprompter Malfunction.
+  if (sourceCard) {
+    gs = { ...gs, [side]: { ...gs[side], lastSpellCast: { effect: sourceCard.effectId || sourceCard.effect || effect, ...sourceCard, _bureaucraticEcho: true } } };
+  }
+
+  // Bureaucratic double: re-run once with echo flag to bypass re-trigger.
+  if (bureaucraticDouble && sourceCard) {
+    log.push("Bureaucratic Delay: spell DOUBLED.");
+    const echoCard = { ...sourceCard, _bureaucraticEcho: true };
+    const r = applySpell(effect, targetId, gs, side, echoCard);
+    return { gs: r.gs, log: [...log, ...r.log] };
+  }
+
   return { gs, log };
 }
 
@@ -1794,6 +2095,31 @@ export function playBattlecry(card, gs, side) {
   if (kw.includes("cia_dead_drop_deathrattle")) {
     // marker only; the deathrattle is resolved via effectConfig.on_death
   }
+  if (kw.includes("blue_origin_summon")) {
+    gs = summonToken(gs, side, { id: "blue_origin_booster", name: "Booster", atk: 2, hp: 2, type: "minion", rarity: "common", class: "Tech", emoji: "🚀", keywords: ["rush"] }, 1);
+    log.push("Booster deployed (Rush).");
+  }
+  if (kw.includes("heal4_hero")) {
+    const p = gs[side];
+    gs = { ...gs, [side]: { ...p, hp: Math.min(p.maxHp, p.hp + 4) } };
+    log.push("+4 HP.");
+  }
+  if (kw.includes("bezos_take_control")) {
+    const candidates = gs[enemy].board.filter(m => (m.atk ?? 0) <= 4);
+    if (candidates.length && gs[side].board.length < 7) {
+      const t = pickRandom(candidates);
+      gs = takeControlOfMinion(gs, t.uid, side, "permanent", side, { keepOnKill: true });
+      log.push(`Acquired ${t.name}. Smile.`);
+    } else {
+      log.push("Bezos: no acquisition target.");
+    }
+  }
+  if (kw.includes("jill_heal")) {
+    const p = gs[side];
+    gs = { ...gs, [side]: { ...p, hp: Math.min(p.maxHp, p.hp + 4) } };
+    gs = drawCards(gs, side, 1);
+    log.push("Jill: +4 HP, drew 1.");
+  }
 
   const triggerActions = getTriggerActions(card, "battlecry");
   for (const action of triggerActions) {
@@ -1809,6 +2135,26 @@ export function doAttack(atkUid, atkSide, targetId, gs) {
   const defSide = atkSide === "player" ? "ai" : "player";
   const att = gs[atkSide].board.find(m => m.uid === atkUid);
   if (!att || att.atk === 0) return { gs, log: ["Can't attack!"] };
+
+  // Wrong Direction: this minion's attack retargets to a random valid character.
+  if (att.keywords?.includes("wrong_direction")) {
+    const all = [
+      "hero",
+      ...gs[defSide].board.map(m => m.uid),
+      ...gs[atkSide].board.filter(m => m.uid !== atkUid).map(m => ({ self: true, uid: m.uid })),
+    ];
+    const pick = all[Math.floor(Math.random() * all.length)];
+    if (typeof pick === "object" && pick.self) {
+      // friendly fire: directly damage own minion
+      gs = updateMinion(gs, atkSide, pick.uid, m => ({ ...m, hp: m.hp - att.atk }));
+      gs = updateMinion(gs, atkSide, atkUid, m => ({ ...m, attacksRemaining: 0, canAttack: false }));
+      log.push(`${att.name} attacked friendly ${pick.uid}!`);
+      gs = resolveDeaths(gs, atkSide, log);
+      return { gs: recalculateAuras(gs), log };
+    }
+    targetId = pick;
+  }
+
   if (att.keywords?.includes("cant_attack")) return { gs, log: ["This minion can't attack."] };
   if (att.summoningSick && !att.keywords?.includes("charge") && !att.keywords?.includes("rush")) return { gs, log: ["Summoning sickness!"] };
   if (att.canAttack === false || (att.attacksRemaining ?? 0) <= 0) return { gs, log: ["Already attacked!"] };

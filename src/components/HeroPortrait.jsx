@@ -2,7 +2,7 @@
 import { memo, useState, useEffect, useRef } from "react";
 import { getSFX } from "../audio/sfx.js";
 
-function HeroPortraitImpl({ name, hp, maxHp, emoji, portrait, isAI, isTarget, onClick, mana, maxMana, armor = 0, ultimateInfo = null, onUltimateClick, heroRef, showName = true, size = 160 }) {
+function HeroPortraitImpl({ name, hp, maxHp, emoji, portrait, isAI, isTarget, onClick, mana, maxMana, armor = 0, ultimateInfo = null, onUltimateClick, heroRef, showName = true, size = 160, bezosAscending = false }) {
   const [flashing, setFlashing] = useState(false);
   const [portraitFailed, setPortraitFailed] = useState(false);
   const prevHp = useRef(hp);
@@ -75,7 +75,18 @@ function HeroPortraitImpl({ name, hp, maxHp, emoji, portrait, isAI, isTarget, on
           </div>
         </div>
       )}
-      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, position: "relative" }}>
+      {bezosAscending && (
+        <>
+          <div className="bezos-ascend-aura" style={{ position: "absolute", top: -56, left: -56, right: undefined, width: size + 112, height: size + 112 }} />
+          <div className="bezos-ascend-ring" style={{ position: "absolute", top: -36, left: -36, width: size + 72, height: size + 72 }} />
+          <div className="bezos-ascend-stars" style={{ position: "absolute", top: 0, left: 0, width: size, height: size }}>
+            {Array.from({ length: 14 }).map((_, i) => (
+              <span key={i} style={{ left: `${(i * 13 + 7) % 100}%`, animationDelay: `${(i * 0.27) % 3}s` }} />
+            ))}
+          </div>
+        </>
+      )}
       <div style={{
         width: size, height: size, borderRadius: 26,
         background: isAI ? "linear-gradient(160deg,#1a0606,#280e0e)" : "linear-gradient(160deg,#061a06,#0e2810)",

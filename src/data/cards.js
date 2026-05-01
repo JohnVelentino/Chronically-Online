@@ -169,6 +169,40 @@ export const HEROES = [
       "influencer","npc","npc","ratio","cancel","lowkey","nft","touch_grass","streamer",
     ],
   },
+  {
+    id: "bezos",
+    name: "Jeff Bezos",
+    class: "Tech",
+    emoji: "📦",
+    portrait: ASSET("assets/heroes/bezos.png"),
+    cardBack: null,
+    bio: "Two-day delivery on your defeat. Ascending soon. Smile fr.",
+    themeColor: "#ff9900",
+    glowColor: "rgba(255,153,0,0.6)",
+    beta: true,
+    deckIds: [
+      "amazon_warehouse","amazon_warehouse","prime_drone","prime_drone","customer_data","customer_data",
+      "subscription_trap","subscription_trap","clone_product","clone_product","aws_outage","aws_outage",
+      "blue_origin_engineer","whole_foods","jeff_smirk","one_click","npc","npc","crypto_bro","sigma",
+    ],
+  },
+  {
+    id: "biden",
+    name: "Joe Biden",
+    class: "USA!",
+    emoji: "🥶",
+    portrait: ASSET("assets/heroes/biden.png"),
+    cardBack: null,
+    bio: "C'mon man. The thing is — no malarkey, no cap. Wait, where am I?",
+    themeColor: "#5588ff",
+    glowColor: "rgba(120,180,255,0.6)",
+    beta: true,
+    deckIds: [
+      "press_conference","press_conference","bureaucratic_delay","bureaucratic_delay","behind_scenes","behind_scenes",
+      "lobbyists","lobbyists","policy_change","policy_change","classified_document","classified_document",
+      "teleprompter_malfunction","wrong_direction","wrong_direction","sleep_mode","jill_biden","old_school_politics","npc","ratio",
+    ],
+  },
 ];
 
 export const DECK_SIZE_TARGET = 35;
@@ -268,6 +302,31 @@ export const CLASS_CARDS = [
   { id:"ten_k_giveaway",     name:"$10,000 Giveaway",          cost:3,              type:"spell",  desc:"Gain 10 Armor. Draw 2 cards.",                                                       emoji:"💰", rarity:"rare",      effect:"ten_k_giveaway",         targetType:"none",   flavor:"chat reward fr fr. drop the tag.",                        class:"Viral" },
   { id:"subscribe_spell",    name:"Subscribe!",                cost:2,              type:"spell",  desc:"Copy a random card from enemy deck into your hand.",                                 emoji:"🔔", rarity:"rare",      effect:"subscribe_spell",        targetType:"none",   flavor:"notifications on. ratio'd into the algorithm.",           class:"Viral" },
   { id:"nolan",              name:"Nolan",                     cost:2, atk:2, hp:3, type:"minion", desc:"Battlecry: Summon a 1/1 Subscribe Counter.",                                         emoji:"🎬", rarity:"common",    keywords:["battlecry","summon_sub_counter"],                                          flavor:"new guy energy. locked in though.",                       class:"Viral" },
+
+  // ── Bezos / Tech class ──────────────────────────────────────────────────────
+  { id:"amazon_warehouse",   name:"Amazon Warehouse",       cost:3, atk:2, hp:5, type:"minion", desc:"End of your turn: summon a 1/1 Worker.",                                              emoji:"📦", rarity:"rare",      keywords:[],                                                                          flavor:"twelve hour shifts. no AC. infinite scaling.",            class:"Tech", effectConfig: { end_of_turn: { type: "summon_token", token: { id: "amazon_worker_token", name: "Warehouse Worker", atk: 1, hp: 1, type: "minion", rarity: "common", class: "Tech", emoji: "👷", keywords: [] } } } },
+  { id:"prime_drone",        name:"Prime Drone",            cost:1, atk:2, hp:1, type:"minion", desc:"Charge. Two day shipping fr.",                                                       emoji:"🛸", rarity:"common",    keywords:["charge"],                                                                  flavor:"package delivered. so was the L.",                        class:"Tech" },
+  { id:"customer_data",      name:"Customer Data",          cost:1,              type:"spell",  desc:"Reveal enemy hand this turn. Draw a card.",                                           emoji:"📊", rarity:"common",    effect:"customer_data",          targetType:"none",   flavor:"you didn't read the privacy policy did u bestie?",        class:"Tech" },
+  { id:"subscription_trap",  name:"Subscription Trap",      cost:2,              type:"spell",  desc:"Enemy loses 2 Aura next turn.",                                                       emoji:"💳", rarity:"rare",      effect:"subscription_trap",      targetType:"none",   flavor:"free trial my ass. cancel at any time *terms apply.",     class:"Tech" },
+  { id:"clone_product",      name:"Clone Product",          cost:3,              type:"spell",  desc:"Copy a random enemy minion to your hand. It costs (1) less.",                          emoji:"🪞", rarity:"epic",      effect:"clone_product",          targetType:"none",   flavor:"amazon basics: same product. cheaper. soulless.",         class:"Tech" },
+  { id:"aws_outage",         name:"AWS Outage",             cost:4,              type:"spell",  desc:"Silence all enemy minions. The cloud is down.",                                       emoji:"☁️", rarity:"epic",      effect:"aws_outage",             targetType:"none",   flavor:"us-east-1 is in shambles fr. half the internet down.",    class:"Tech" },
+  { id:"blue_origin_engineer", name:"Blue Origin Engineer", cost:4, atk:3, hp:5, type:"minion", desc:"Battlecry: Summon a 2/2 Booster with Rush.",                                          emoji:"🚀", rarity:"rare",      keywords:["battlecry","blue_origin_summon"],                                          flavor:"shaped like a uhh nevermind.",                            class:"Tech" },
+  { id:"whole_foods",        name:"Whole Foods Aisle",      cost:3, atk:3, hp:4, type:"minion", desc:"Battlecry: Restore 4 HP to your hero.",                                               emoji:"🥬", rarity:"common",    keywords:["battlecry","heal4_hero"],                                                  flavor:"organic kale latte $14. healing? priceless.",            class:"Tech" },
+  { id:"jeff_smirk",         name:"Jeff Smirk",             cost:7, atk:8, hp:8, type:"minion", desc:"Battlecry: Take control of an enemy minion with 4 or less Attack.",                  emoji:"😏", rarity:"legendary", keywords:["battlecry","bezos_take_control"],                                          flavor:"market cap energy. acquire or be acquired.",              class:"Tech" },
+  { id:"one_click",          name:"One-Click Buyout",       cost:2,              type:"spell",  desc:"Draw 2 cards.",                                                                       emoji:"🛒", rarity:"common",    effect:"draw2",                  targetType:"none",   flavor:"checkout in 0.3s. regret in 30s.",                        class:"Tech" },
+
+  // ── Biden / USA! class — Chaos engine ───────────────────────────────────────
+  { id:"press_conference",   name:"Press Conference",       cost:3,              type:"spell",  desc:"Random outcome: buff all friendlies, debuff all enemies, summon a 3/3, or nothing.",   emoji:"🎤", rarity:"rare",      effect:"press_conference",       targetType:"none",   flavor:"wait, what was the question again?",                      class:"USA!" },
+  { id:"bureaucratic_delay", name:"Bureaucratic Delay",     cost:2,              type:"spell",  desc:"50% chance enemy's next card fizzles. 50% chance it triggers twice.",                  emoji:"📝", rarity:"common",    effect:"bureaucratic_delay",     targetType:"none",   flavor:"forms in triplicate fr.",                                  class:"USA!" },
+  { id:"behind_scenes",      name:"Behind The Scenes",      cost:2,              type:"spell",  desc:"Hidden effect triggers next turn. (You don't know which.)",                            emoji:"🎭", rarity:"rare",      effect:"behind_scenes",          targetType:"none",   flavor:"the deep state is cooking smth. unsure what.",            class:"USA!" },
+  { id:"lobbyists",          name:"Lobbyists",              cost:3,              type:"spell",  desc:"Buff random side's minions +1/+1.",                                                    emoji:"💼", rarity:"rare",      effect:"lobbyists",              targetType:"none",   flavor:"who paid more? exactly.",                                 class:"USA!" },
+  { id:"policy_change",      name:"Policy Change",          cost:4,              type:"spell",  desc:"Swap Attack and HP of all minions on the board this turn.",                            emoji:"📜", rarity:"epic",      effect:"policy_change",          targetType:"none",   flavor:"new rules. dont read em. enforce em.",                    class:"USA!" },
+  { id:"classified_document",name:"Classified Document",    cost:1,              type:"spell",  desc:"Draw 2 random cards from any deck.",                                                   emoji:"📁", rarity:"common",    effect:"classified_document",    targetType:"none",   flavor:"redacted. allegedly. classified.",                        class:"USA!" },
+  { id:"teleprompter_malfunction", name:"Teleprompter Malfunction", cost:2,      type:"spell",  desc:"50% your last spell triggers again. 50% deal 3 damage to your hero.",                  emoji:"📺", rarity:"rare",      effect:"teleprompter_malfunction", targetType:"none", flavor:"end of quote. repeat. end of quote.",                    class:"USA!" },
+  { id:"wrong_direction",    name:"Wrong Direction",        cost:2, atk:3, hp:3, type:"minion", desc:"Attacks a random target. Nobody is safe — including you.",                            emoji:"🚶", rarity:"rare",      keywords:["wrong_direction"],                                                         flavor:"where am I going? yes.",                                  class:"USA!" },
+  { id:"sleep_mode",         name:"Sleep Mode",             cost:3,              type:"spell",  desc:"Freeze a random minion (any side) for 2 turns.",                                       emoji:"😴", rarity:"common",    effect:"sleep_mode",             targetType:"none",   flavor:"good night, folks. ok ok ok.",                            class:"USA!" },
+  { id:"jill_biden",         name:"Jill Biden",             cost:3, atk:2, hp:4, type:"minion", desc:"Battlecry: Restore 4 HP. Draw a card.",                                                emoji:"🌹", rarity:"epic",      keywords:["battlecry","jill_heal"],                                                   flavor:"first lady. handler-in-chief.",                           class:"USA!" },
+  { id:"old_school_politics",name:"Old School Politics",    cost:5,              type:"spell",  desc:"Add 2 random spells to your hand. They cost (1) less.",                                emoji:"🇺🇸", rarity:"epic",     effect:"old_school_politics",    targetType:"none",   flavor:"back in my day, things made sense. allegedly.",          class:"USA!" },
 
   // ── Generated / summoned tokens (not drafted directly) ─────────────────────
   { id:"fan_token_tate",     name:"Manly G Fan",               cost:1, atk:1, hp:1, type:"minion", desc:"Viral. A Fan of the Top G.",                                                         emoji:"💪", rarity:"common",    keywords:[],                                                                          flavor:"one of the bros.",                                       class:"Viral", token:true },

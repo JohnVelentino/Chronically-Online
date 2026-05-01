@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { HEROES, CLASS_CARDS, DEFAULT_CARDS, RC, getHeroDeckIds } from "../data/cards.js";
 import { getUltimateMeta } from "../data/ultimates.js";
 import { getSFX } from "../audio/sfx.js";
+import CosmicBackground from "./CosmicBackground.jsx";
 
 // Small card preview used only inside HeroSelect
 function MiniCard({ card }) {
@@ -157,13 +158,22 @@ export default function HeroSelect({ onSelect }) {
       animate={{ opacity: 1 }}
       transition={{ duration: 0.9, ease: "easeOut" }}
       style={{
-        minHeight: "100vh", background: "#04080f",
+        minHeight: "100vh",
+        background: "radial-gradient(ellipse 120% 70% at 50% 20%, rgba(30,60,120,0.32), transparent 60%), linear-gradient(180deg, #02050d 0%, #000208 100%)",
         display: "flex", flexDirection: "column", alignItems: "center",
         fontFamily: "system-ui, sans-serif", color: "#fff",
         padding: "12px 24px 24px", boxSizing: "border-box",
         position: "relative", overflow: "hidden",
       }}
     >
+      {/* Animated cosmic backdrop — replaces flat black */}
+      <CosmicBackground
+        density={180}
+        shootingStars={2}
+        accentA={hovered ? `${hovered.themeColor}33` : activeClass ? `${activeClass.themeColor}33` : "rgba(80,40,160,0.18)"}
+        accentB={hovered ? `${hovered.glowColor}` : activeClass ? `${activeClass.glowColor}` : "rgba(30,100,200,0.15)"}
+        accentC="rgba(150,60,180,0.12)"
+      />
       <style>{`
         @keyframes pulse{0%,100%{opacity:0.6}50%{opacity:1}}
         @keyframes ultShimmer{0%{transform:translateX(-120%)}100%{transform:translateX(120%)}}
@@ -172,6 +182,8 @@ export default function HeroSelect({ onSelect }) {
         @keyframes heroChosenRing{0%{transform:scale(0.6);opacity:0.9}100%{transform:scale(2.4);opacity:0}}
         @keyframes titleDrop{0%{opacity:0;transform:translateY(-18px);letter-spacing:10px}100%{opacity:1;transform:translateY(0);letter-spacing:6px}}
         @keyframes titleGlowPulse{0%,100%{text-shadow:0 0 40px rgba(55,138,221,0.5)}50%{text-shadow:0 0 60px rgba(55,138,221,0.9),0 0 100px rgba(127,119,221,0.5)}}
+        @keyframes betaPulse{0%,100%{box-shadow:0 0 14px rgba(255,180,40,0.55),0 0 26px rgba(255,120,0,0.35)}50%{box-shadow:0 0 22px rgba(255,200,60,0.95),0 0 44px rgba(255,140,0,0.55)}}
+        @keyframes betaSheen{0%{transform:translateX(-120%)}100%{transform:translateX(220%)}}
       `}</style>
 
       {/* Background glow matching hovered hero */}
@@ -301,6 +313,31 @@ export default function HeroSelect({ onSelect }) {
                       color: hero.themeColor,
                     }}
                   >
+                    {/* BETA badge — work-in-progress hero */}
+                    {hero.beta && (
+                      <div style={{
+                        position: "absolute", top: -10, right: -10, zIndex: 70,
+                        padding: "4px 10px",
+                        borderRadius: 999,
+                        fontSize: 10, fontWeight: 900, letterSpacing: 1.6,
+                        textTransform: "uppercase",
+                        color: "#1a0a00",
+                        background: "linear-gradient(135deg,#ffd24a,#ff8a1a)",
+                        border: "1.5px solid #ffe999",
+                        textShadow: "0 1px 0 rgba(255,255,255,0.4)",
+                        animation: "betaPulse 1.8s ease-in-out infinite",
+                        pointerEvents: "none",
+                        overflow: "hidden",
+                      }}>
+                        <span style={{ position: "relative", zIndex: 2 }}>BETA</span>
+                        <div style={{
+                          position: "absolute", top: 0, left: 0, width: "40%", height: "100%",
+                          background: "linear-gradient(100deg,transparent 0%,rgba(255,255,255,0.7) 50%,transparent 100%)",
+                          animation: "betaSheen 2.4s ease-in-out infinite",
+                          pointerEvents: "none",
+                        }} />
+                      </div>
+                    )}
                     {/* Expanding ring burst on pick */}
                     {isPicked && (
                       <>
